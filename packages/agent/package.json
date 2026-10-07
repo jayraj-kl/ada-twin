@@ -1,0 +1,21 @@
+{
+  "name": "@repo/agent",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "",
+  "type": "module",
+  "exports": {},
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^26.6.3",
+    "@google/adk-devtools": "^2.2.0"
+  },
+  "dependencies": {
+    "@google/adk": "^2.2.0"
+  }
+}

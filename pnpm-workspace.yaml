@@ -3,3 +3,9 @@ packages:
   - "packages/*"
 allowBuilds:
   esbuild: true
+
+  "@google/genai": true
+  better-sqlite3: false
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
