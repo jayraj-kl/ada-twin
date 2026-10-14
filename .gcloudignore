@@ -1,0 +1,13 @@
+# What `pnpm run deploy` leaves out of the upload to Cloud Build.
+.git
+node_modules/
+dist/
+.next/
+.turbo/
+.env
+.env.*
+!.env.example
+.agents/
+.claude/
+docs/
+apps/web/public/

@@ -1,0 +1,13 @@
+# Runs the production images locally: docker compose up --build
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+    env_file:
+      - path: apps/api/.env
+        required: false
+    environment:
+      PORT: "8080"
+    ports:
+      - "8080:8080"

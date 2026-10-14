@@ -37,6 +37,8 @@ yarn-error.log*
 .DS_Store
 *.pem
 
+drizzle/
+
 # Local agent files
 .agents/
 .claude/
