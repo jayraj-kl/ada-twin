@@ -1,0 +1,27 @@
+{
+  "name": "@repo/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit",
+    "generate-pano": "tsx --env-file-if-exists=.env src/generate-pano.ts",
+    "agent-demo": "tsx --env-file-if-exists=../apps/api/.env src/agent-demo.ts",
+    "fetch-world": "tsx --env-file-if-exists=.env src/fetch-world.ts",
+    "medsim-demo": "tsx --env-file-if-exists=.env src/medsim-demo.ts"
+  },
+  "dependencies": {
+    "@repo/agent": "workspace:*",
+    "@repo/sim": "workspace:*",
+    "@repo/world": "workspace:*"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^26.6.3",
+    "eslint": "10.9.1",
+    "tsx": "^4.23.15",
+    "typescript": "7.0.2"
+  }
+}
