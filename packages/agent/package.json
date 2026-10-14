@@ -5,17 +5,26 @@
   "license": "MIT",
   "description": "",
   "type": "module",
-  "exports": {},
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "build": "tsc"
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
   },
   "devDependencies": {
+    "@google/adk-devtools": "^2.2.0",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^26.6.3",
-    "@google/adk-devtools": "^2.2.0"
+    "eslint": "10.9.1",
+    "tsx": "^4.23.15",
+    "typescript": "7.0.2"
   },
   "dependencies": {
-    "@google/adk": "^2.2.0"
+    "@google/adk": "^2.2.0",
+    "@google/genai": "^2.28.0",
+    "@repo/sim": "workspace:*",
+    "zod": "^4.6.6"
   }
 }
