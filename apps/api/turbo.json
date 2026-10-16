@@ -1,0 +1,18 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "dev": {
+      "passThroughEnv": [
+        "PORT",
+        "WEB_ORIGIN",
+        "WORLD_LABS_API_KEY",
+        "WORLD_LABS_API_BASE",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+        "GEMINI_MODEL",
+        "LOCATE_SPLIT"
+      ]
+    }
+  }
+}
