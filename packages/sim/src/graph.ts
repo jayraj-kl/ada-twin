@@ -66,7 +66,22 @@ export interface SinkNode extends NodeBase {
   kind: "sink";
 }
 
-export type FactoryNode = SourceNode | StationNode | BufferNode | SinkNode;
+/**
+ * Equipment parts never pass through, such as a control cabinet, that
+ * stations or sources cannot run without. Each unit fails on its own, and
+ * while any unit is not up, everything that needs it stops.
+ */
+export interface SupportNode extends NodeBase {
+  kind: "support";
+  units: Param;
+  /** Mean seconds of running between failures, per unit; omit for none. */
+  mtbf?: Param;
+  /** Mean seconds to repair a unit once a crew starts. */
+  mttr?: Param;
+}
+
+export type FactoryNode =
+  SourceNode | StationNode | BufferNode | SinkNode | SupportNode;
 
 /** Material flows `from` → `to`. */
 export interface Edge {
@@ -76,9 +91,16 @@ export interface Edge {
   share?: number;
 }
 
+/** `neededBy`, a station or source, cannot run while `support` is down. */
+export interface Dependency {
+  support: string;
+  neededBy: string;
+}
+
 export interface FactoryGraph {
   nodes: FactoryNode[];
   edges: Edge[];
+  dependencies?: Dependency[];
 }
 
 export function param(
@@ -102,9 +124,29 @@ export function validateGraph(graph: FactoryGraph): string[] {
       if (!ids.has(end)) problems.push(`Edge refers to unknown node "${end}"`);
     }
   }
+  const kinds = new Map(graph.nodes.map(({ id, kind }) => [id, kind]));
+  for (const { support, neededBy } of graph.dependencies ?? []) {
+    if (kinds.get(support) !== "support") {
+      problems.push(
+        `"${support}" is needed by "${neededBy}" but is not support equipment`,
+      );
+    }
+    const kind = kinds.get(neededBy);
+    if (kind !== "station" && kind !== "source") {
+      problems.push(
+        `"${support}" can only be needed by a station or source, not "${neededBy}"`,
+      );
+    }
+  }
   for (const node of graph.nodes) {
     const outgoing = graph.edges.filter((edge) => edge.from === node.id);
     const incoming = graph.edges.filter((edge) => edge.to === node.id);
+    if (node.kind === "support") {
+      if (outgoing.length > 0 || incoming.length > 0) {
+        problems.push(`"${node.id}" is support equipment and handles no parts`);
+      }
+      continue;
+    }
     if (node.kind !== "sink" && outgoing.length === 0) {
       problems.push(`"${node.id}" has nowhere to send parts`);
     }

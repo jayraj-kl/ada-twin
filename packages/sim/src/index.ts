@@ -5,6 +5,7 @@ export {
   validateGraph,
   type Anchor,
   type BufferNode,
+  type Dependency,
   type Edge,
   type FactoryGraph,
   type FactoryNode,
@@ -13,6 +14,7 @@ export {
   type SinkNode,
   type SourceNode,
   type StationNode,
+  type SupportNode,
 } from "./graph";
 
 export {
@@ -31,7 +33,7 @@ export {
   type TickAction,
 } from "./kernel";
 
-export type { Kpis, StationKpis } from "./kpi";
+export type { Kpis, StationKpis, SupportKpis } from "./kpi";
 
 export {
   applyScenario,

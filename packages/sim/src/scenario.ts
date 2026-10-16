@@ -90,6 +90,16 @@ export function applyScenario(
         1 / supply,
         `${Math.round((1 - supply) * 100)}% of supply disrupted`,
       );
+    } else if (node.kind === "support") {
+      if (node.mtbf) {
+        scale(
+          node.id,
+          "mtbf",
+          node.mtbf,
+          Math.max(MTBF_FLOOR, 1 - MTBF_LOSS_PER_DEGREE * degrees),
+          `${degrees}°C above ${REFERENCE_TEMP_C}°C`,
+        );
+      }
     } else if (node.kind === "station") {
       const heat = `${degrees}°C above ${REFERENCE_TEMP_C}°C`;
       scale(

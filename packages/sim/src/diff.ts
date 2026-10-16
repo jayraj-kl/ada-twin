@@ -53,7 +53,9 @@ export function applyDiffs(
       const fits =
         diff.param === "interArrival"
           ? node.kind === "source"
-          : node.kind === "station";
+          : node.kind === "station" ||
+            (node.kind === "support" &&
+              (diff.param === "mtbf" || diff.param === "mttr"));
       if (!fits) {
         throw new Error(`"${diff.node}" has no ${diff.param}`);
       }

@@ -3,6 +3,10 @@ export interface StationTimes {
   busyTime: number;
   blockedTime: number;
   downTime: number;
+  /** Seconds stopped because support equipment it needs was down. */
+  stoppedTime: number;
+  /** Seconds each piece of support equipment it needs was down. */
+  stoppedBy: Record<string, number>;
 }
 
 export interface StationKpis {
@@ -12,8 +16,20 @@ export interface StationKpis {
   blocked: number;
   /** Share of time failed, under repair or in preventive maintenance. */
   down: number;
+  /** Share of time stopped, though itself fine, by support equipment it needs. */
+  stopped: number;
+  /**
+   * Share of time each support it needs was down. Two can be down at once,
+   * so these can add up to more than `stopped`.
+   */
+  stoppedBy: Record<string, number>;
   /** Share of unit-time up with nothing to do. */
   idle: number;
+}
+
+export interface SupportKpis {
+  /** Share of time at least one unit was failed, under repair or serviced. */
+  down: number;
 }
 
 export interface Kpis {
@@ -24,6 +40,8 @@ export interface Kpis {
   /** Time-averaged number of parts in the factory. */
   averageWip: number;
   stations: Record<string, StationKpis>;
+  /** Missing from runs made before support equipment existed. */
+  supports?: Record<string, SupportKpis>;
   /** The station with the least spare capacity; null with no stations. */
   bottleneck: string | null;
 }
@@ -34,6 +52,7 @@ export function computeKpis(run: {
   scrapped: number;
   wipTime: number;
   stations: ({ id: string; units: number } & StationTimes)[];
+  supports: { id: string; downTime: number }[];
 }): Kpis {
   const stations: Record<string, StationKpis> = {};
   let bottleneck: string | null = null;
@@ -43,8 +62,22 @@ export function computeKpis(run: {
     const utilisation = station.busyTime / unitTime;
     const blocked = station.blockedTime / unitTime;
     const down = station.downTime / run.horizon;
-    const idle = Math.max(0, 1 - utilisation - blocked - down);
-    stations[station.id] = { utilisation, blocked, down, idle };
+    const stopped = station.stoppedTime / run.horizon;
+    const stoppedBy = Object.fromEntries(
+      Object.entries(station.stoppedBy).map(([id, time]) => [
+        id,
+        time / run.horizon,
+      ]),
+    );
+    const idle = Math.max(0, 1 - utilisation - blocked - down - stopped);
+    stations[station.id] = {
+      utilisation,
+      blocked,
+      down,
+      stopped,
+      stoppedBy,
+      idle,
+    };
     // Time blocked is the fault of something downstream, so it counts as spare.
     const spare = idle + blocked;
     if (spare < leastSpare) {
@@ -59,6 +92,12 @@ export function computeKpis(run: {
     throughputPerHour: (run.completed / run.horizon) * 3600,
     averageWip: run.wipTime / run.horizon,
     stations,
+    supports: Object.fromEntries(
+      run.supports.map(({ id, downTime }) => [
+        id,
+        { down: downTime / run.horizon },
+      ]),
+    ),
     bottleneck,
   };
 }
