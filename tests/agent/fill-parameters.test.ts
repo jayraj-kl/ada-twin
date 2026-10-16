@@ -83,4 +83,35 @@ describe("fillParameters", () => {
     expect(filled.assumed).toEqual([]);
     expect(requests.some((request) => request.search)).toBe(false);
   });
+
+  it("only looks up failure and repair times for auxiliary equipment", async () => {
+    const { ask, requests } = scripted((request) =>
+      request.search
+        ? [
+            {
+              param: "mtbf",
+              value: 50000,
+              url: "https://example.org/cabinet",
+              confidence: "typical",
+            },
+          ]
+        : [],
+    );
+    const cabinet = {
+      id: "cabinet",
+      name: "Control cabinet",
+      manufacturer: "Siemens",
+      model: "8MF",
+      auxiliary: true,
+    };
+    const filled = await fillParameters(ask, cabinet, [manual]);
+
+    const search = requests.find((request) => request.search)!;
+    expect(search.prompt).toContain('"mttr"');
+    expect(search.prompt).not.toContain('"cycleTime"');
+    expect(search.prompt).not.toContain('"scrapRate"');
+    expect(search.prompt).toContain("support equipment");
+    expect(filled.params.mtbf.value).toBe(50000);
+    expect(filled.assumed).toEqual(["mttr"]);
+  });
 });

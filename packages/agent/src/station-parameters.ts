@@ -37,6 +37,12 @@ export const STATION_PARAMS = [
 ] as const;
 
 export type StationParamKey = (typeof STATION_PARAMS)[number]["key"];
+
+/** The only numbers support equipment is simulated with. */
+export const SUPPORT_PARAM_KEYS = [
+  "mtbf",
+  "mttr",
+] as const satisfies readonly StationParamKey[];
 export type StationParams = Record<StationParamKey, Param>;
 
 export interface NamedFile extends ModelFile {

@@ -13,7 +13,23 @@ const snapshot: Snapshot = {
   ],
   buffers: [],
   sources: [
-    { id: "intake", name: "Batch intake", blocked: false, releaseFactor: 1 },
+    {
+      id: "intake",
+      name: "Batch intake",
+      blocked: false,
+      stopped: false,
+      releaseFactor: 1,
+    },
+  ],
+  supports: [
+    {
+      id: "cabinets",
+      name: "Control cabinets",
+      status: "down",
+      unitsDown: 1,
+      units: 4,
+      neededBy: ["Boilers"],
+    },
   ],
 };
 
@@ -39,9 +55,15 @@ describe("ROLES", () => {
       kind: "assign-crew",
       role: "maintenance",
       snapshot,
-      options: [{ station: "pumps", job: "repair", waitingSince: 600 }],
+      options: [
+        { station: "pumps", job: "repair", waitingSince: 600 },
+        { station: "cabinets", unit: 2, job: "repair", waitingSince: 1200 },
+      ],
     });
-    expect(options).toEqual(["Repair Feed pumps (waiting 20 min)"]);
+    expect(options).toEqual([
+      "Repair Feed pumps (waiting 20 min)",
+      "Repair Control cabinets unit 3 (waiting 10 min; Boilers stopped until it is fixed)",
+    ]);
   });
 
   it("words the supervisor's options as servicing", () => {
@@ -49,11 +71,16 @@ describe("ROLES", () => {
       kind: "shift-tick",
       role: "supervisor",
       snapshot,
-      options: [{ type: "none" }, { type: "preventive", station: "pumps" }],
+      options: [
+        { type: "none" },
+        { type: "preventive", station: "pumps" },
+        { type: "preventive", station: "cabinets" },
+      ],
     });
     expect(options).toEqual([
       "Change nothing",
       "Take Feed pumps out for preventive servicing",
+      "Take one unit of Control cabinets out for preventive servicing (stops Boilers meanwhile)",
     ]);
   });
 });

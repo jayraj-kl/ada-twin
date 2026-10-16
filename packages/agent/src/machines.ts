@@ -10,6 +10,11 @@ export interface Machine {
   /** Identical machines working side by side; default 1. */
   count?: number;
   notes?: string;
+  /**
+   * Support equipment, such as a control cabinet: parts never pass through
+   * it, but what needs it stops when it fails.
+   */
+  auxiliary?: boolean;
 }
 
 /**
@@ -28,6 +33,8 @@ export function describeMachine(machine: Machine): string {
     machine.manufacturer && `Manufacturer: ${machine.manufacturer}`,
     machine.model && `Model: ${machine.model}`,
     `Count: ${machine.count ?? 1}`,
+    machine.auxiliary &&
+      "Role: support equipment; parts do not pass through it",
     machine.notes && `Notes: ${machine.notes}`,
   ]
     .filter(Boolean)

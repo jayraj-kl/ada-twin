@@ -14,11 +14,26 @@ export {
 
 export {
   draftFlow,
+  reviseFlow,
+  type CurrentFlow,
   type FlowDraft,
+  type FlowMessage,
   type FlowNode,
+  type FlowRevision,
 } from "./agents/flow-drafter";
 
-export { locateMachines, type Placement } from "./agents/machine-locator";
+export {
+  locateInViews,
+  locateMachines,
+  type Placement,
+} from "./agents/machine-locator";
+
+export {
+  DEFAULT_LAYOUT,
+  splitPanorama,
+  type PanoramaView,
+  type ViewLayout,
+} from "./panorama-views";
 
 export { extractFromDocuments } from "./agents/document-reader";
 

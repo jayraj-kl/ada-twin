@@ -1,6 +1,43 @@
 import { GoogleGenAI } from "@google/genai";
 
-const DEFAULT_MODEL = "gemini-flash-latest";
+// Vertex AI needs a concrete model ID; aliases like `gemini-flash-latest`
+// exist only on the AI Studio Gemini API.
+export const DEFAULT_MODEL = "gemini-3.5-flash";
+// Vertex AI's global endpoint serves every Gemini model, including ones not
+// yet offered in single regions.
+const DEFAULT_LOCATION = "global";
+
+/**
+ * Where Gemini runs on Vertex AI. Auth is Application Default Credentials:
+ * `gcloud auth application-default login` locally, the service account on
+ * Cloud Run.
+ */
+export function vertexSettings(): { project: string; location: string } {
+  const project = process.env.GOOGLE_CLOUD_PROJECT;
+  if (!project) {
+    throw new Error(
+      "GOOGLE_CLOUD_PROJECT is not set (put it in apps/api/.env)",
+    );
+  }
+  return {
+    project,
+    location: process.env.GOOGLE_CLOUD_LOCATION ?? DEFAULT_LOCATION,
+  };
+}
+
+/**
+ * Vertex AI answers 429 when Gemini's shared capacity is busy, which is
+ * common on new projects. Waiting and asking again usually works:
+ * 2s, 4s, 8s, 16s, 32s, about a minute in all.
+ */
+export const RATE_LIMIT_RETRIES = 5;
+export const RATE_LIMIT_FIRST_DELAY_SECONDS = 2;
+
+export function isRateLimited(error: unknown): boolean {
+  if ((error as { status?: unknown })?.status === 429) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("RESOURCE_EXHAUSTED") || message.includes('"code":429');
+}
 
 export interface ModelFile {
   bytes: Uint8Array;
@@ -28,14 +65,19 @@ export interface ModelReply {
  */
 export type AskModel = (request: ModelRequest) => Promise<ModelReply>;
 
-export function createGeminiModel(
-  options: { apiKey?: string; model?: string } = {},
-): AskModel {
-  const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not set (put it in apps/api/.env)");
-  }
-  const client = new GoogleGenAI({ apiKey });
+export function createGeminiModel(options: { model?: string } = {}): AskModel {
+  const client = new GoogleGenAI({
+    vertexai: true,
+    ...vertexSettings(),
+    httpOptions: {
+      retryOptions: {
+        attempts: RATE_LIMIT_RETRIES + 1,
+        initialDelay: RATE_LIMIT_FIRST_DELAY_SECONDS,
+        // Only a busy model is worth asking again; other errors are answers.
+        httpStatusCodes: [429],
+      },
+    },
+  });
   const model = options.model ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
 
   return async ({ instruction, prompt, files = [], search }) => {

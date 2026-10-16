@@ -5,6 +5,7 @@ import type { AskModel } from "./model";
 import {
   type NamedFile,
   STATION_PARAMS,
+  SUPPORT_PARAM_KEYS,
   type StationParamKey,
   type StationParams,
 } from "./station-parameters";
@@ -17,7 +18,9 @@ export interface FilledParameters {
 
 /**
  * Fills every station parameter from the best source available: the user's
- * documents first, then the web, then a marked assumption.
+ * documents first, then the web, then a marked assumption. Support equipment
+ * only has its failure and repair times looked up; the rest it never uses,
+ * so they are filled with assumptions without being reported as such.
  */
 export async function fillParameters(
   ask: AskModel,
@@ -25,8 +28,10 @@ export async function fillParameters(
   documents: NamedFile[] = [],
 ): Promise<FilledParameters> {
   const found = await extractFromDocuments(ask, machine, documents);
-  const missing = () =>
-    STATION_PARAMS.map((param) => param.key).filter((key) => !found[key]);
+  const wanted: readonly StationParamKey[] = machine.auxiliary
+    ? SUPPORT_PARAM_KEYS
+    : STATION_PARAMS.map((param) => param.key);
+  const missing = () => wanted.filter((key) => !found[key]);
   const web = await researchOnWeb(ask, machine, missing());
   // A document always outranks the web, even if the model answers for more
   // than it was asked.

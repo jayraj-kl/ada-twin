@@ -3,14 +3,22 @@ import {
   FunctionTool,
   Gemini,
   InMemoryRunner,
+  type LlmRequest,
+  type LlmResponse,
   LlmAgent,
 } from "@google/adk";
 import type { Decision, DecisionRequest, Policy, Snapshot } from "@repo/sim";
 import { z } from "zod";
+import {
+  DEFAULT_MODEL,
+  RATE_LIMIT_FIRST_DELAY_SECONDS,
+  RATE_LIMIT_RETRIES,
+  isRateLimited,
+  vertexSettings,
+} from "../model";
 import { type AgentSpec, PERSONAS, ROLES, type RoleDefinition } from "../roles";
 
 const APP_NAME = "factory-twin";
-const DEFAULT_MODEL = "gemini-flash-latest";
 
 export interface AgentPolicyOptions {
   agents: AgentSpec[];
@@ -18,8 +26,6 @@ export interface AgentPolicyOptions {
   goal: string;
   /** A model instance; defaults to the one the environment configures. */
   model?: BaseLlm;
-  /** Defaults to GEMINI_API_KEY. */
-  apiKey?: string;
   onDecision?: (record: DecisionRecord) => void;
 }
 
@@ -35,14 +41,47 @@ export interface DecisionRecord {
   fallback?: string;
 }
 
-function modelFromEnvironment(apiKey?: string): BaseLlm {
-  const key = apiKey ?? process.env.GEMINI_API_KEY;
-  if (!key) {
-    throw new Error("GEMINI_API_KEY is not set (put it in apps/api/.env)");
+/**
+ * Gemini that waits and asks again when Vertex AI is out of capacity (429).
+ * ADK's Gemini takes no retry settings, so the retry wraps its calls.
+ */
+class PatientGemini extends Gemini {
+  override async *generateContentAsync(
+    llmRequest: LlmRequest,
+    stream?: boolean,
+    abortSignal?: AbortSignal,
+  ): AsyncGenerator<LlmResponse, void> {
+    for (let attempt = 0; ; attempt++) {
+      let answered = false;
+      try {
+        for await (const response of super.generateContentAsync(
+          llmRequest,
+          stream,
+          abortSignal,
+        )) {
+          answered = true;
+          yield response;
+        }
+        return;
+      } catch (error) {
+        if (answered || attempt >= RATE_LIMIT_RETRIES || !isRateLimited(error)) {
+          throw error;
+        }
+        const seconds = RATE_LIMIT_FIRST_DELAY_SECONDS * 2 ** attempt;
+        console.warn(
+          `[agent] Gemini is busy (429), retrying in ${seconds}s (${attempt + 1}/${RATE_LIMIT_RETRIES})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+      }
+    }
   }
-  return new Gemini({
+}
+
+function modelFromEnvironment(): BaseLlm {
+  return new PatientGemini({
     model: process.env.GEMINI_MODEL ?? DEFAULT_MODEL,
-    apiKey: key,
+    vertexai: true,
+    ...vertexSettings(),
   });
 }
 
@@ -66,8 +105,17 @@ function describeFactory(snapshot: Snapshot): string {
     "Sources:",
     ...snapshot.sources.map(
       (source) =>
-        `- ${source.name}: releasing at ${Math.round(source.releaseFactor * 100)}%${source.blocked ? ", blocked by a full line" : ""}`,
+        `- ${source.name}: releasing at ${Math.round(source.releaseFactor * 100)}%${source.blocked ? ", blocked by a full line" : ""}${source.stopped ? ", stopped because support equipment it needs is down" : ""}`,
     ),
+    ...(snapshot.supports?.length
+      ? [
+          "Support equipment (handles no parts; what needs it stops while any unit is out):",
+          ...snapshot.supports.map(
+            (support) =>
+              `- ${support.name}: ${support.status}, ${support.unitsDown}/${support.units} units out${support.neededBy.length ? `, needed by ${support.neededBy.join(", ")}` : ""}`,
+          ),
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -79,7 +127,7 @@ function describeFactory(snapshot: Snapshot): string {
  * stalls.
  */
 export function createAgentPolicy(options: AgentPolicyOptions): Policy {
-  const model = options.model ?? modelFromEnvironment(options.apiKey);
+  const model = options.model ?? modelFromEnvironment();
 
   const seats = options.agents.map((spec) => {
     const role = ROLES[spec.role];
