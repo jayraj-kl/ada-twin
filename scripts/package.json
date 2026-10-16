@@ -8,17 +8,20 @@
     "check-types": "tsc --noEmit",
     "generate-pano": "tsx --env-file-if-exists=.env src/generate-pano.ts",
     "agent-demo": "tsx --env-file-if-exists=../apps/api/.env src/agent-demo.ts",
-    "fetch-world": "tsx --env-file-if-exists=.env src/fetch-world.ts"
+    "fetch-world": "tsx --env-file-if-exists=.env src/fetch-world.ts",
+    "locate-demo": "tsx --env-file-if-exists=../apps/api/.env src/locate-demo.ts"
   },
   "dependencies": {
     "@repo/agent": "workspace:*",
     "@repo/sim": "workspace:*",
-    "@repo/world": "workspace:*"
+    "@repo/world": "workspace:*",
+    "pngjs": "7.0.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^26.6.3",
+    "@types/pngjs": "6.0.5",
     "eslint": "10.9.1",
     "tsx": "^4.23.15",
     "typescript": "7.0.2"

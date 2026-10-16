@@ -12,7 +12,8 @@ Paths in arguments are relative to this `scripts/` folder.
 
 - **World Labs scripts** (`generate-pano`, `fetch-world`, `medsim-demo`): copy
   `.env.example` to `.env` and set `WORLD_LABS_API_KEY`.
-- **`agent-demo`**: set `GEMINI_API_KEY` in `apps/api/.env`.
+- **`agent-demo`, `locate-demo`**: set `GOOGLE_CLOUD_PROJECT` in
+  `apps/api/.env` and run `gcloud auth application-default login` once.
 
 ## Scripts
 
@@ -33,7 +34,7 @@ pnpm --filter @repo/scripts fetch-world <worldId>
 ```
 
 Saves the splat, collider mesh, panorama and `world.json` to
-`apps/web/public/worlds/demo` (change with `--out <dir>`). Costs no credits.
+`apps/frontend/public/worlds/current` (change with `--out <dir>`). Costs no credits.
 
 ### `agent-demo` — run the demo factory with and without agents
 

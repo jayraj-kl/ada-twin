@@ -14,7 +14,7 @@ import { worldLabsClient } from "./lib/world-labs";
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
-    out: { type: "string", default: "../apps/web/public/worlds/demo" },
+    out: { type: "string", default: "../apps/frontend/public/worlds/current" },
   },
 });
 
