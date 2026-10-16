@@ -1,0 +1,209 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Lime signal on off-black ink over cream, after easyvouch.in. Lime is only
+ * ever a fill: as text on cream it fails contrast.
+ */
+:root {
+  --radius: 0.875rem;
+  --background: #f5f5eb;
+  --foreground: #14140f;
+  --card: #ffffff;
+  --card-foreground: #14140f;
+  --popover: #ffffff;
+  --popover-foreground: #14140f;
+  --primary: #beff50;
+  --primary-hover: #aee848;
+  --primary-foreground: #14140f;
+  --secondary: #ebebdf;
+  --secondary-foreground: #14140f;
+  --muted: #ebebdf;
+  --muted-foreground: #5f5f55;
+  --accent: #ebebdf;
+  --accent-foreground: #14140f;
+  --destructive: #b23a3a;
+  --border: #d2d2c8;
+  --input: #d2d2c8;
+  --ring: #14140f;
+  --ink: #14140f;
+  --success: #2f7d4f;
+  --warning: #a86b12;
+  --info: #2c6aa0;
+  --chart-1: #14140f;
+  --chart-2: #2c6aa0;
+  --chart-3: #a86b12;
+  --chart-4: #b23a3a;
+  --chart-5: #8d8d80;
+}
+
+.dark {
+  --background: #0e0e0e;
+  --foreground: #f5f5eb;
+  --card: #191919;
+  --card-foreground: #f5f5eb;
+  --popover: #191919;
+  --popover-foreground: #f5f5eb;
+  --primary: #beff50;
+  --primary-hover: #cfff7a;
+  --primary-foreground: #14140f;
+  --secondary: #232323;
+  --secondary-foreground: #f5f5eb;
+  --muted: #202020;
+  --muted-foreground: #a3a399;
+  --accent: #262626;
+  --accent-foreground: #f5f5eb;
+  --destructive: #e37373;
+  --border: #ffffff1f;
+  --input: #ffffff29;
+  --ring: #beff50;
+  --ink: #f5f5eb;
+  --success: #5cbf85;
+  --warning: #e0b04d;
+  --info: #6fb0e6;
+  --chart-1: #f5f5eb;
+  --chart-2: #6fb0e6;
+  --chart-3: #e0b04d;
+  --chart-4: #e37373;
+  --chart-5: #6b6b62;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ink: var(--ink);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-card: 28px;
+  --shadow-hard: 4px 4px 0 0 var(--ink);
+  --shadow-hard-sm: 2px 2px 0 0 var(--ink);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  /* Steppers are drawn by NumberField; the browser's arrows would double them. */
+  input[type="number"] {
+    appearance: textfield;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+  ::selection {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+}
+
+/* The theme toggle grows the new theme out of the button. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+@keyframes loading-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes wave {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  20%,
+  60% {
+    transform: rotate(16deg);
+  }
+  40%,
+  80% {
+    transform: rotate(-8deg);
+  }
+}
+
+/*
+ * A 2:1 panorama wraps around, so sliding a repeat-x copy by its own width
+ * loops with no seam. The tile is the size container; paused until hovered.
+ */
+@keyframes pano-pan {
+  to {
+    background-position-x: -100cqw;
+  }
+}
+
+@utility pano-pan {
+  background-repeat: repeat-x;
+  background-size: 100cqw 100%;
+  animation: pano-pan 14s linear infinite paused;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
