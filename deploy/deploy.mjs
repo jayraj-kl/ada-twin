@@ -4,8 +4,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const SERVICE = process.env.API_SERVICE ?? "ada-twin-api";
-const REGION = process.env.GCP_REGION ?? "asia-south1";
-const REPOSITORY = process.env.ARTIFACT_REPOSITORY ?? "cloud-run";
+const REGION = process.env.GCP_REGION ?? "africa-south1";
+const REPOSITORY = process.env.ARTIFACT_REPOSITORY ?? "ada-twin-cloud-run";
+const SQL_INSTANCE = process.env.SQL_INSTANCE ?? "ada-twin";
 
 // gcloud is a .cmd shim on Windows, which only a shell can launch.
 const shell = process.platform === "win32";
@@ -62,10 +63,15 @@ const deploy = [
   // A run streams agent decisions for as long as the shift takes to simulate.
   "--timeout=3600",
   "--max-instances=3",
-  "--update-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,WORLD_LABS_API_KEY=WORLD_LABS_API_KEY:latest",
+  // Cloud Run mounts the database's Unix socket under /cloudsql/, which
+  // DATABASE_URL points at.
+  `--add-cloudsql-instances=${project}:${REGION}:${SQL_INSTANCE}`,
+  "--update-secrets=WORLD_LABS_API_KEY=WORLD_LABS_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest",
+  // Gemini is reached through Vertex AI as the service account, so no key.
+  `--update-env-vars=GOOGLE_CLOUD_PROJECT=${project},GOOGLE_CLOUD_LOCATION=${process.env.GOOGLE_CLOUD_LOCATION ?? "global"}`,
 ];
 // Left alone when unset, so a redeploy keeps the origin already configured.
 if (process.env.WEB_ORIGIN) {
-  deploy.push(`--update-env-vars=WEB_ORIGIN=${process.env.WEB_ORIGIN}`);
+  deploy[deploy.length - 1] += `,WEB_ORIGIN=${process.env.WEB_ORIGIN}`;
 }
 gcloud(...deploy);
