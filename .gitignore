@@ -38,6 +38,7 @@ yarn-error.log*
 *.pem
 
 drizzle/
+*.tsbuildinfo
 
 # Local agent files
 .agents/
