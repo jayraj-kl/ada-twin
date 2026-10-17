@@ -9,7 +9,15 @@ const snapshot: Snapshot = {
   wip: 0,
   freeCrews: 1,
   stations: [
-    { id: "pumps", name: "Feed pumps", status: "down", busyUnits: 0, units: 2 },
+    {
+      id: "pumps",
+      name: "Feed pumps",
+      status: "running",
+      busyUnits: 1,
+      unitsDown: 1,
+      units: 2,
+      wearHours: 3,
+    },
   ],
   buffers: [],
   sources: [
@@ -29,6 +37,7 @@ const snapshot: Snapshot = {
       unitsDown: 1,
       units: 4,
       neededBy: ["Boilers"],
+      wearHours: 2,
     },
   ],
 };
@@ -56,12 +65,12 @@ describe("ROLES", () => {
       role: "maintenance",
       snapshot,
       options: [
-        { station: "pumps", job: "repair", waitingSince: 600 },
+        { station: "pumps", unit: 1, job: "repair", waitingSince: 600 },
         { station: "cabinets", unit: 2, job: "repair", waitingSince: 1200 },
       ],
     });
     expect(options).toEqual([
-      "Repair Feed pumps (waiting 20 min)",
+      "Repair Feed pumps unit 2 (waiting 20 min)",
       "Repair Control cabinets unit 3 (waiting 10 min; Boilers stopped until it is fixed)",
     ]);
   });
@@ -79,7 +88,7 @@ describe("ROLES", () => {
     });
     expect(options).toEqual([
       "Change nothing",
-      "Take Feed pumps out for preventive servicing",
+      "Take the most worn unit of Feed pumps out for preventive servicing",
       "Take one unit of Control cabinets out for preventive servicing (stops Boilers meanwhile)",
     ]);
   });

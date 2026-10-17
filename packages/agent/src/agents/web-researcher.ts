@@ -31,6 +31,7 @@ export async function researchOnWeb(
   const found: Partial<StationParams> = {};
   if (wanted.length === 0) return found;
   const reply = await ask({
+    task: "research-web",
     search: true,
     instruction:
       "You research industrial equipment for a factory simulation. Prefer the manufacturer's own datasheets and manuals, then standards bodies and engineering references. Avoid forums and reseller listings. Never invent a source.",

@@ -40,7 +40,30 @@ const PARAMS = [
 ] as const;
 
 const count = z.number().int().min(1).max(20);
-const Diff = z.discriminatedUnion("type", [
+const duration = z.number().positive();
+const share = z.number().min(0).max(1);
+/** A diff as the model writes it; new nodes get their ids afterwards. */
+export const Diff = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("insert-station"),
+    from: z.string(),
+    to: z.string(),
+    name: z.string().min(1),
+    units: count.catch(1).default(1),
+    cycleTime: duration,
+    cycleTimeVariation: share.optional().catch(undefined),
+    scrapRate: share.optional().catch(undefined),
+    mtbf: duration.optional().catch(undefined),
+    mttr: duration.optional().catch(undefined),
+  }),
+  z.object({
+    type: z.literal("add-support"),
+    name: z.string().min(1),
+    units: count.catch(1).default(1),
+    neededBy: z.array(z.string()).min(1),
+    mtbf: duration.optional().catch(undefined),
+    mttr: duration.optional().catch(undefined),
+  }),
   z.object({ type: z.literal("add-units"), station: z.string(), count }),
   z.object({ type: z.literal("add-spare"), support: z.string(), count }),
   z.object({
@@ -85,7 +108,7 @@ const seconds = (value: number) =>
       : `${Math.round(value)} s`;
 
 /** The plant as lines the model can read, with each node's numbers. */
-function describePlant(graph: FactoryGraph, kpis?: Kpis): string[] {
+export function describePlant(graph: FactoryGraph, kpis?: Kpis): string[] {
   const time = (id: string) => {
     const station = kpis?.stations[id];
     return station
@@ -113,7 +136,8 @@ function describePlant(graph: FactoryGraph, kpis?: Kpis): string[] {
       ? [
           "Support equipment and what stops when it is down:",
           ...(graph.dependencies ?? []).map(
-            ({ support, neededBy }) => `- "${support}" is needed by "${neededBy}"`,
+            ({ support, neededBy }) =>
+              `- "${support}" is needed by "${neededBy}"`,
           ),
         ]
       : []),
@@ -144,8 +168,9 @@ export async function designChanges(
     throw new Error("The last message has to be the user's request");
   }
   const reply = await ask({
+    task: "design-changes",
     instruction:
-      "You help redesign a factory in its digital twin. You turn what the user asks for into concrete changes the simulation can measure, and you never invent equipment the plant does not have.",
+      "You help redesign a factory in its digital twin. You turn what the user asks for into concrete changes the simulation can measure. You add a kind of equipment the plant does not have only when the user asks for it, or asks what is missing.",
     prompt: [
       "The plant:",
       ...describePlant(graph, kpis),
@@ -159,7 +184,10 @@ export async function designChanges(
             "The conversation so far:",
             ...messages
               .slice(0, -1)
-              .map(({ role, text }) => `${role === "user" ? "User" : "You"}: ${text}`),
+              .map(
+                ({ role, text }) =>
+                  `${role === "user" ? "User" : "You"}: ${text}`,
+              ),
             "",
           ]
         : []),
@@ -170,13 +198,14 @@ export async function designChanges(
       '- {"type": "add-spare", "support": id, "count": n}: standby units for support equipment, which take over while a unit is down (a spare pump, a second boiler on standby).',
       '- {"type": "insert-buffer", "from": id, "to": id, "name": string, "capacity": parts}: a new buffer (rack, queue, tank) on an existing link.',
       '- {"type": "resize-buffer", "buffer": id, "capacity": parts}: a different size for an existing buffer.',
+      ...NEW_EQUIPMENT_LINES,
       `- {"type": "set-param", "node": id, "param": one of ${PARAMS.join(", ")}, "value": number}: seconds for times, a share from 0 to 1 for cycleTimeVariation and scrapRate. interArrival is for sources only; support equipment has only mtbf and mttr. Work out the new value from the current one, e.g. 10% faster is 0.9 times the cycleTime.`,
       "- extraCrews: maintenance crews to add, 0 unless asked.",
-      "Use only ids listed above. Machines of a kind the plant does not have cannot be added: say so in reply and suggest adding the machine in the twin step.",
+      "Use only ids listed above. New equipment gets its id later: refer to it by nothing but its name.",
       "If the request is unclear, propose nothing and ask one short question in reply.",
       "",
       'Answer with JSON: {"reply": string, "changes": [{"title": string, "detail": string, "diffs": [diff], "extraCrews": number}]}.',
-      "title is a short imperative such as \"Add a spare feed pump\"; detail is one sentence on why it should help. reply is one or two plain sentences to the user.",
+      'title is a short imperative such as "Add a spare feed pump"; detail is one sentence on why it should help. reply is one or two plain sentences to the user.',
     ]
       .filter((line, index, lines) => line !== "" || lines[index - 1] !== "")
       .join("\n"),
@@ -190,13 +219,7 @@ export async function designChanges(
     const diffs: GraphDiff[] = [];
     for (const raw of proposed.diffs) {
       const parsed = Diff.safeParse(raw);
-      if (!parsed.success) continue;
-      const diff = parsed.data;
-      diffs.push(
-        diff.type === "insert-buffer"
-          ? { ...diff, id: freeId(plant, diffs, diff.name) }
-          : diff,
-      );
+      if (parsed.success) diffs.push(withId(parsed.data, plant, diffs));
     }
     if (diffs.length === 0 && proposed.extraCrews === 0) {
       dropped.push(proposed.title);
@@ -224,17 +247,49 @@ export async function designChanges(
       ? ` I could not make ${dropped.map((title) => `"${title}"`).join(", ")} fit the plant, so I left ${dropped.length === 1 ? "it" : "them"} out.`
       : "";
   return {
-    reply: (answer.reply.trim() || (changes.length > 0 ? "Here is what I would change." : "I could not turn that into a change.")) + note,
+    reply:
+      (answer.reply.trim() ||
+        (changes.length > 0
+          ? "Here is what I would change."
+          : "I could not turn that into a change.")) + note,
     changes,
   };
 }
 
-/** An id for a new buffer that no node, nor an earlier diff, already has. */
+/** The lines of the prompt that explain how to add new equipment. */
+export const NEW_EQUIPMENT_LINES = [
+  '- {"type": "insert-station", "from": id, "to": id, "name": string, "units": n, "cycleTime": s, "mtbf"?: s, "mttr"?: s, "scrapRate"?: share, "cycleTimeVariation"?: share}: a new kind of machine on an existing link, which every part then passes through. Give realistic numbers for that kind of machine.',
+  '- {"type": "add-support", "name": string, "units": n, "neededBy": [id], "mtbf"?: s, "mttr"?: s}: new support equipment parts never pass through (a water softener, a backup compressor); what needs it stops while it is down.',
+  "New equipment only pays off through what it changes: list set-param diffs on the existing machines it improves in the same change (a softener makes the boiler fail less: a higher mtbf).",
+];
+
+type ParsedDiff = z.infer<typeof Diff>;
+
+/** The diff with an id for the node it adds, if it adds one. */
+export function withId(
+  diff: ParsedDiff,
+  graph: FactoryGraph,
+  earlier: GraphDiff[],
+): GraphDiff {
+  if (diff.type === "insert-buffer") {
+    return { ...diff, id: freeId(graph, earlier, `buffer-${diff.name}`) };
+  }
+  if (diff.type === "insert-station" || diff.type === "add-support") {
+    return { ...diff, id: freeId(graph, earlier, `new-${diff.name}`) };
+  }
+  return diff;
+}
+
+/** An id for a new node that no node, nor an earlier diff, already has. */
 function freeId(graph: FactoryGraph, diffs: GraphDiff[], name: string): string {
-  const base = `buffer-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "new"}`;
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "new";
   const taken = new Set([
     ...graph.nodes.map(({ id }) => id),
-    ...diffs.flatMap((diff) => (diff.type === "insert-buffer" ? [diff.id] : [])),
+    ...diffs.flatMap((diff) => ("id" in diff ? [diff.id] : [])),
   ]);
   let id = base;
   for (let n = 2; taken.has(id); n += 1) id = `${base}-${n}`;

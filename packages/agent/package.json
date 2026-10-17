@@ -25,6 +25,7 @@
   "dependencies": {
     "@google/adk": "^2.2.0",
     "@google/genai": "^2.28.0",
+    "@repo/logger": "workspace:*",
     "@repo/sim": "workspace:*",
     "jpeg-js": "0.4.4",
     "pngjs": "7.0.0",

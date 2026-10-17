@@ -23,6 +23,10 @@ export const MAINTENANCE_TECHNICIAN: RoleDefinition<"maintenance"> = {
         return `${task} ${support.name}${unit} (waiting ${waited} min${effect})`;
       }
       const station = snapshot.stations.find(({ id }) => id === job.station);
-      return `${task} ${station?.name ?? job.station} (waiting ${waited} min)`;
+      const unit =
+        station && station.units > 1 && job.unit !== undefined
+          ? ` unit ${job.unit + 1}`
+          : "";
+      return `${task} ${station?.name ?? job.station}${unit} (waiting ${waited} min)`;
     }),
 };

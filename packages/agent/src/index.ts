@@ -39,6 +39,15 @@ export { extractFromDocuments } from "./agents/document-reader";
 
 export { researchOnWeb } from "./agents/web-researcher";
 
+export { writePlaybook } from "./agents/playbook-writer";
+
+export {
+  describeScenario,
+  type ScenarioAnswer,
+  type ScenarioChange,
+  type ScenarioField,
+} from "./agents/scenario-writer";
+
 export {
   estimateCosts,
   type CostEstimate,
@@ -49,7 +58,10 @@ export {
 export { describeMachine, needsInfo, type Machine } from "./machines";
 
 export {
+  DEFAULT_MODEL,
   createGeminiModel,
+  withModelChoice,
+  type ModelChoice,
   type AskModel,
   type ModelFile,
   type ModelReply,
@@ -87,6 +99,7 @@ export {
 export {
   DEFAULT_IMAGE_MODEL,
   createImageEditor,
+  imageModelId,
   type EditImage,
   type ImageEditReply,
   type ImageEditRequest,
@@ -94,3 +107,18 @@ export {
   type ImageTurn,
   type InlineImage,
 } from "./image-editor";
+
+export {
+  scoutEquipment,
+  type DigestLine,
+  type RunDigest,
+  type ScoutKind,
+  type ScoutedChange,
+} from "./agents/equipment-scout";
+
+export {
+  isOffered,
+  modelCatalog,
+  type ImageModelOption,
+  type ModelOption,
+} from "./catalog";

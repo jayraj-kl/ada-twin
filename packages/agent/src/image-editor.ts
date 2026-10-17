@@ -1,13 +1,24 @@
 import { GoogleGenAI, Modality } from "@google/genai";
+import { since } from "@repo/logger";
 import {
   RATE_LIMIT_FIRST_DELAY_SECONDS,
   RATE_LIMIT_RETRIES,
+  log,
+  pickedImageModel,
+  usage,
   vertexSettings,
 } from "./model";
 
 // Nano Banana 2.1: cheap at 2K and tuned for back-and-forth editing. Like
 // Nano Banana Pro (`gemini-3-pro-image`) it is served from `global` only.
 export const DEFAULT_IMAGE_MODEL = "gemini-nano-banana-2.1";
+
+/** The image model to use now: the request's pick, else the environment's. */
+export const imageModelId = () =>
+  pickedImageModel() || process.env.IMAGE_MODEL || DEFAULT_IMAGE_MODEL;
+
+// Models that draw at no more than 1K; asking them for more is an error.
+const ONLY_1K = new Set(["gemini-3.1-flash-lite-image"]);
 
 export interface InlineImage {
   mimeType: string;
@@ -33,6 +44,8 @@ export interface ImageEditRequest {
   contents: ImageTurn[];
   aspectRatio?: string;
   imageSize?: "1K" | "2K" | "4K";
+  /** What the call is for, for the logs. */
+  task?: string;
 }
 
 export interface ImageEditReply {
@@ -61,25 +74,38 @@ export function createImageEditor(options: { model?: string } = {}): EditImage {
       },
     },
   });
-  const model =
-    options.model ?? process.env.IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
+  const model = options.model ?? imageModelId();
 
-  return async ({ instruction, contents, aspectRatio, imageSize }) => {
-    // No temperature, topP or seed: the image models reject them.
-    const response = await client.models.generateContent({
+  return async ({ instruction, contents, aspectRatio, task, ...rest }) => {
+    const imageSize =
+      ONLY_1K.has(model) && rest.imageSize ? "1K" : rest.imageSize;
+    const started = performance.now();
+    const call = {
+      task: task ?? "edit-image",
       model,
-      contents,
-      config: {
-        systemInstruction: instruction,
-        responseModalities: [Modality.TEXT, Modality.IMAGE],
-        imageConfig: {
-          ...(aspectRatio ? { aspectRatio } : {}),
-          ...(imageSize ? { imageSize } : {}),
-          outputMimeType: "image/jpeg",
-          outputCompressionQuality: 90,
+      turns: contents.length,
+      imageSize,
+    };
+    // No temperature, topP or seed: the image models reject them.
+    const response = await client.models
+      .generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction: instruction,
+          responseModalities: [Modality.TEXT, Modality.IMAGE],
+          imageConfig: {
+            ...(aspectRatio ? { aspectRatio } : {}),
+            ...(imageSize ? { imageSize } : {}),
+            outputMimeType: "image/jpeg",
+            outputCompressionQuality: 90,
+          },
         },
-      },
-    });
+      })
+      .catch((error: unknown) => {
+        log.error("image call failed", { ...call, ms: since(started), error });
+        throw error;
+      });
     const candidate = response.candidates?.[0];
     // Thoughts, and the draft images among them, are left out: only the
     // answer and its signatures need to go back.
@@ -109,6 +135,14 @@ export function createImageEditor(options: { model?: string } = {}): EditImage {
       (candidate?.finishReason && candidate.finishReason !== "STOP"
         ? candidate.finishReason
         : undefined);
+    const fields = { ...call, ms: since(started), ...usage(response) };
+    if (image) log.info("image call", fields);
+    else
+      log.warn("image call made no image", {
+        ...fields,
+        blocked,
+        text: text.slice(0, 200),
+      });
     return {
       image,
       text:

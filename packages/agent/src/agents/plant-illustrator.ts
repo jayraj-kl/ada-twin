@@ -86,6 +86,7 @@ export function illustrate(
         },
       ];
   return edit({
+    task: previous ? "revise-illustration" : "illustrate",
     instruction: INSTRUCTION,
     contents,
     aspectRatio: "16:9",
@@ -108,6 +109,7 @@ export async function outsideRedesign(
   options: { changes: string[]; message: string },
 ): Promise<{ outside: boolean; note: string }> {
   const reply = await ask({
+    task: "check-outside-redesign",
     instruction:
       "You check requests to edit a photo of a plant against the redesign that was simulated.",
     prompt: [

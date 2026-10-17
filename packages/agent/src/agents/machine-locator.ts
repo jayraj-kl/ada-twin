@@ -50,6 +50,7 @@ async function askWhere(
   prompt: string[],
 ): Promise<Map<string, Entry>> {
   const reply = await ask({
+    task: "locate-machines",
     instruction: INSTRUCTION,
     files: [file],
     prompt: prompt.join("\n"),

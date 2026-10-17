@@ -77,6 +77,7 @@ export async function draftFlow(
     return { nodes: [], edges: [], support: [], needs: [] };
   }
   const reply = await ask({
+    task: "draft-flow",
     instruction:
       "You map how material moves through a factory for a digital twin. You rely on what the user tells you and on what is clearly visible, and you keep the flow as simple as the evidence allows.",
     files: [panorama],
@@ -201,6 +202,7 @@ export async function reviseFlow(
     throw new Error("The last message has to be the user's request");
   }
   const reply = await ask({
+    task: "revise-flow",
     instruction:
       "You edit the material flow of a factory's digital twin on the user's instructions. The user knows their plant: what they say overrides the photo and any earlier draft. You change only what they ask for.",
     files: [panorama],

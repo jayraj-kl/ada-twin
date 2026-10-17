@@ -52,6 +52,7 @@ export async function explainChanges(
   const { changes } = options;
   if (changes.length === 0) return { summary: "", paragraphs: {} };
   const reply = await ask({
+    task: "explain-changes",
     instruction:
       "You write short, plain reports for plant managers about changes to their plant. You use only the numbers you are given and never invent new ones.",
     prompt: [

@@ -18,6 +18,7 @@ export const SHIFT_SUPERVISOR: RoleDefinition<"supervisor"> = {
         return `Take ${unit}${support.name} out for preventive servicing${stops}`;
       }
       const station = snapshot.stations.find(({ id }) => id === action.station);
-      return `Take ${station?.name ?? action.station} out for preventive servicing`;
+      const unit = station && station.units > 1 ? "the most worn unit of " : "";
+      return `Take ${unit}${station?.name ?? action.station} out for preventive servicing`;
     }),
 };

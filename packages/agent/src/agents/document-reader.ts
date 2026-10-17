@@ -25,6 +25,7 @@ export async function extractFromDocuments(
   const found: Partial<StationParams> = {};
   for (const document of documents) {
     const reply = await ask({
+      task: "read-document",
       instruction:
         "You read equipment manuals, datasheets and maintenance records for a factory simulation. You report only values the document states or that follow from it by simple arithmetic.",
       files: [document],

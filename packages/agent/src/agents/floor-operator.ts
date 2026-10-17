@@ -7,13 +7,15 @@ import {
   type LlmResponse,
   LlmAgent,
 } from "@google/adk";
+import { since } from "@repo/logger";
 import type { Decision, DecisionRequest, Policy, Snapshot } from "@repo/sim";
 import { z } from "zod";
 import {
-  DEFAULT_MODEL,
   RATE_LIMIT_FIRST_DELAY_SECONDS,
   RATE_LIMIT_RETRIES,
   isRateLimited,
+  log,
+  textModelId,
   vertexSettings,
 } from "../model";
 import { type AgentSpec, PERSONAS, ROLES, type RoleDefinition } from "../roles";
@@ -68,9 +70,11 @@ class PatientGemini extends Gemini {
           throw error;
         }
         const seconds = RATE_LIMIT_FIRST_DELAY_SECONDS * 2 ** attempt;
-        console.warn(
-          `[agent] Gemini is busy (429), retrying in ${seconds}s (${attempt + 1}/${RATE_LIMIT_RETRIES})`,
-        );
+        log.warn("gemini is busy (429), asking again", {
+          model: this.model,
+          retryInSeconds: seconds,
+          attempt: `${attempt + 1}/${RATE_LIMIT_RETRIES}`,
+        });
         await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
       }
     }
@@ -79,7 +83,7 @@ class PatientGemini extends Gemini {
 
 function modelFromEnvironment(): BaseLlm {
   return new PatientGemini({
-    model: process.env.GEMINI_MODEL ?? DEFAULT_MODEL,
+    model: textModelId(),
     vertexai: true,
     ...vertexSettings(),
   });
@@ -96,7 +100,7 @@ function describeFactory(snapshot: Snapshot): string {
     "Stations:",
     ...snapshot.stations.map(
       (station) =>
-        `- ${station.name}: ${station.status}, ${station.busyUnits}/${station.units} machines working`,
+        `- ${station.name}: ${station.status}, ${station.busyUnits}/${station.units} machines working${station.unitsDown ? `, ${station.unitsDown} out` : ""}, ${station.wearHours.toFixed(1)} h worked since last repair or service`,
     ),
     "Buffers:",
     ...snapshot.buffers.map(
@@ -112,7 +116,7 @@ function describeFactory(snapshot: Snapshot): string {
           "Support equipment (handles no parts; what needs it stops while any unit is out):",
           ...snapshot.supports.map(
             (support) =>
-              `- ${support.name}: ${support.status}, ${support.unitsDown}/${support.units} units out${support.neededBy.length ? `, needed by ${support.neededBy.join(", ")}` : ""}`,
+              `- ${support.name}: ${support.status}, ${support.unitsDown}/${support.units} units out${support.neededBy.length ? `, needed by ${support.neededBy.join(", ")}` : ""}, ${support.wearHours.toFixed(1)} h worked since last repair or service`,
           ),
         ]
       : []),
@@ -192,6 +196,7 @@ export function createAgentPolicy(options: AgentPolicyOptions): Policy {
       ].join("\n");
 
       seat.answer.current = null;
+      const started = performance.now();
       let fallback: string | undefined;
       try {
         seat.sessionId ??= (
@@ -223,6 +228,16 @@ export function createAgentPolicy(options: AgentPolicyOptions): Policy {
       const decision: Decision = valid
         ? answer
         : { choice: 0, reason: `Baseline choice used: ${fallback}` };
+      const fields = {
+        task: "floor-decision",
+        agent: seat.spec.name,
+        role: request.role,
+        kind: request.kind,
+        choice: labels[decision.choice],
+        ms: since(started),
+      };
+      if (valid) log.info("agent decided", fields);
+      else log.warn("agent fell back to the baseline choice", { ...fields, fallback });
       options.onDecision?.({
         agent: seat.spec,
         kind: request.kind,

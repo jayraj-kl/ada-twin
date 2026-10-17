@@ -66,6 +66,7 @@ export async function estimateCosts(
   if (changes.length === 0) return [];
   const currency = options.currency ?? "USD";
   const reply = await ask({
+    task: "estimate-costs",
     search: true,
     instruction:
       "You estimate the cost of changes to a factory for an engineering report. Prefer manufacturers' and distributors' published prices, government wage statistics and industry cost guides. Give ranges, not single figures, and never invent a source.",
