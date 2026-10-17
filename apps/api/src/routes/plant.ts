@@ -29,7 +29,6 @@ plant.onError((error, c) => {
   if (error instanceof HTTPException) {
     return c.json({ error: error.message }, error.status);
   }
-  console.error("[plant] request failed:", error);
   return c.json(
     { error: error instanceof Error ? error.message : String(error) },
     502,

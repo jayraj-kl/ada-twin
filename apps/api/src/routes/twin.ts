@@ -4,6 +4,7 @@ import {
   createGeminiModel,
   type CurrentFlow,
   type FlowMessage,
+  describeScenario,
   draftFlow,
   estimateCosts,
   fillParameters,
@@ -13,6 +14,7 @@ import {
 } from "@repo/agent";
 import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import type { Scenario } from "@repo/sim";
 
 function model() {
   try {
@@ -265,4 +267,39 @@ twin.post("/costs", async (c) => {
   return c.json({
     estimates: await estimateCosts(model(), changes, { currency }),
   });
+});
+
+/**
+ * Turns a scenario described in plain words into proposed changes to its
+ * settings and a crew briefing. Takes { scenario, machines, messages } and
+ * answers { reply, changes, briefing, notModelled }; nothing is applied here.
+ */
+twin.post("/scenario", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    scenario?: Scenario;
+    machines?: unknown;
+    messages?: unknown;
+  } | null;
+  if (!body?.scenario || typeof body.scenario !== "object") {
+    throw new HTTPException(400, { message: "Expected the current scenario" });
+  }
+  const messages = parseMessages(body.messages);
+  if (messages.at(-1)?.role !== "user") {
+    throw new HTTPException(400, {
+      message: "Expected the conversation to end with the user's description",
+    });
+  }
+  const machines = (Array.isArray(body.machines) ? body.machines : [])
+    .filter(
+      (machine): machine is { id: string; name: string } =>
+        typeof machine?.id === "string" && typeof machine?.name === "string",
+    )
+    .map(({ id, name }) => ({ id, name }));
+  return c.json(
+    await describeScenario(model(), {
+      scenario: body.scenario,
+      machines,
+      messages,
+    }),
+  );
 });
