@@ -17,5 +17,3 @@ services:
       - ${GCLOUD_CONFIG:-~/.config/gcloud}:/gcloud:ro
     ports:
       - "8080:8080"
-# gen-lang-client-0447144465
-# postgresql://ada_app:ada-twin@5123@34.35.76.29:5432/ada_twin?sslmode=no-verify

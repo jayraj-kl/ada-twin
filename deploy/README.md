@@ -85,7 +85,7 @@ The deploy script reads these environment variables:
 | `WEB_ORIGIN`            | unchanged                | Origin the API accepts browser requests from |
 | `GOOGLE_CLOUD_LOCATION` | `global`                 | Vertex AI location Gemini is called in       |
 
-The API only answers browsers on `WEB_ORIGIN`, and falls back to `http://localhost:3000`. Once the web app has a URL, deploy once with it set; later deploys keep it:
+The API only answers browsers on `WEB_ORIGIN`, and falls back to the two local apps, `http://localhost:3000` (frontend) and `http://localhost:3067` (web). Once the web app has a URL, deploy once with it set; later deploys keep it:
 
 ```sh
 # PowerShell
