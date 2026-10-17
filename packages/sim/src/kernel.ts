@@ -343,8 +343,10 @@ export async function simulate(
     }
   }
 
+  // Up while enough units run: standby spares cover for units that are down.
   const supportUp = (support: SupportState) =>
-    support.units.every(({ condition }) => condition === "up");
+    support.units.filter(({ condition }) => condition !== "up").length <=
+    Math.round(support.node.spares?.value ?? 0);
   const supplied = (ids: string[]) =>
     ids.every((id) => supportUp(supports.get(id)!));
 

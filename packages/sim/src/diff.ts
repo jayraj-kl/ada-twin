@@ -4,6 +4,17 @@ import type { FactoryGraph, Param } from "./graph";
 export type GraphDiff =
   | { type: "add-units"; station: string; count: number }
   | { type: "resize-buffer"; buffer: string; capacity: number }
+  /** Standby units for support equipment, which cover for a unit that is down. */
+  | { type: "add-spare"; support: string; count: number }
+  /** A new buffer on the link from `from` to `to`, which it splits in two. */
+  | {
+      type: "insert-buffer";
+      id: string;
+      name: string;
+      from: string;
+      to: string;
+      capacity: number;
+    }
   | {
       type: "set-param";
       node: string;
@@ -42,6 +53,40 @@ export function applyDiffs(
         throw new Error(`"${diff.station}" is not a station`);
       }
       node.units = set(node.units, node.units.value + diff.count, "units");
+    } else if (diff.type === "add-spare") {
+      const node = find(diff.support);
+      if (node.kind !== "support") {
+        throw new Error(`"${diff.support}" is not support equipment`);
+      }
+      node.units = set(node.units, node.units.value + diff.count, "units");
+      node.spares = set(
+        node.spares,
+        (node.spares?.value ?? 0) + diff.count,
+        "units",
+      );
+    } else if (diff.type === "insert-buffer") {
+      if (next.nodes.some(({ id }) => id === diff.id)) {
+        throw new Error(`There is already a node "${diff.id}"`);
+      }
+      const link = next.edges.findIndex(
+        ({ from, to }) => from === diff.from && to === diff.to,
+      );
+      if (link < 0) {
+        throw new Error(`No link from "${diff.from}" to "${diff.to}"`);
+      }
+      const { share } = next.edges[link]!;
+      next.nodes.push({
+        id: diff.id,
+        kind: "buffer",
+        name: diff.name,
+        capacity: set(undefined, diff.capacity, "parts"),
+      });
+      next.edges.splice(
+        link,
+        1,
+        { from: diff.from, to: diff.id, ...(share === undefined ? {} : { share }) },
+        { from: diff.id, to: diff.to },
+      );
     } else if (diff.type === "resize-buffer") {
       const node = find(diff.buffer);
       if (node.kind !== "buffer") {

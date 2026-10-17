@@ -1,3 +1,5 @@
+export { averageKpis, simulateDays, spread, type Spread } from "./days";
+
 export { applyDiffs, type GraphDiff } from "./diff";
 
 export {

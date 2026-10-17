@@ -74,6 +74,11 @@ export interface SinkNode extends NodeBase {
 export interface SupportNode extends NodeBase {
   kind: "support";
   units: Param;
+  /**
+   * Standby units among `units`: the equipment keeps supplying while no more
+   * than this many units are down at once. Omit for none.
+   */
+  spares?: Param;
   /** Mean seconds of running between failures, per unit; omit for none. */
   mtbf?: Param;
   /** Mean seconds to repair a unit once a crew starts. */
@@ -142,6 +147,9 @@ export function validateGraph(graph: FactoryGraph): string[] {
     const outgoing = graph.edges.filter((edge) => edge.from === node.id);
     const incoming = graph.edges.filter((edge) => edge.to === node.id);
     if (node.kind === "support") {
+      if ((node.spares?.value ?? 0) >= node.units.value) {
+        problems.push(`"${node.id}" needs more units than standby spares`);
+      }
       if (outgoing.length > 0 || incoming.length > 0) {
         problems.push(`"${node.id}" is support equipment and handles no parts`);
       }
