@@ -10,7 +10,7 @@ export const buttonVariants = cva(
       variant: {
         // The signal: lime with an ink outline that lifts onto a hard shadow.
         default:
-          "border-ink bg-primary text-primary-foreground hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-hard active:translate-0 active:shadow-none",
+          "border-ink bg-primary text-primary-foreground hover:border-ink hover:bg-primary-hover hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-hard active:translate-0 active:shadow-none",
         ink: "border-ink bg-ink text-background hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[4px_4px_0_0_var(--primary)] active:translate-0 active:shadow-none",
         outline:
           "border-border bg-card text-foreground hover:border-ink hover:bg-accent",

@@ -1,4 +1,11 @@
-import type { Adjustment, Kpis, SimEvent } from "@repo/sim";
+import type {
+  Adjustment,
+  FactoryGraph,
+  GraphDiff,
+  Kpis,
+  Scenario,
+  SimEvent,
+} from "@repo/sim";
 import type { DecisionRecord } from "./project";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
@@ -123,6 +130,8 @@ export type RunLine =
       baseline: Kpis;
     }
   | { type: "decision"; record: DecisionRecord }
+  /** What happened on the floor since the last line, while it runs. */
+  | { type: "events"; events: SimEvent[] }
   | { type: "done"; kpis: Kpis; events: SimEvent[] }
   | { type: "error"; message: string };
 
@@ -171,4 +180,114 @@ export async function findParameters(
   return unwrap(
     await fetch(`${API}/twin/parameters`, { method: "POST", body: form }),
   );
+}
+
+export interface CostRange {
+  low: number;
+  high: number;
+}
+
+/** What a recommended change would cost, as the API found it on the web. */
+export interface CostEstimate {
+  id: string;
+  currency: string;
+  /** Paid once; null if there is no such cost. */
+  oneOff: CostRange | null;
+  /** Paid every year; null if there is no such cost. */
+  yearly: CostRange | null;
+  basis: string;
+  /** Empty when the range is only the model's estimate. */
+  sources: { url: string; title?: string }[];
+}
+
+export async function estimateCosts(
+  changes: { id: string; title: string; detail: string; machine?: Machine }[],
+  currency: string,
+): Promise<CostEstimate[]> {
+  const response = await fetch(`${API}/twin/costs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ changes, currency }),
+  });
+  return (await unwrap<{ estimates: CostEstimate[] }>(response)).estimates;
+}
+
+/** A change the design chat proposes, in the shape the report measures. */
+export interface DesignedChange {
+  id: string;
+  title: string;
+  detail: string;
+  diffs: GraphDiff[];
+  extraCrews: number;
+}
+
+/** Turns a request in plain words into changes to the redesigned plant. */
+export async function designChanges(
+  graph: FactoryGraph,
+  kpis: Kpis | undefined,
+  scenario: Scenario,
+  messages: { role: "user" | "assistant"; text: string }[],
+): Promise<{ reply: string; changes: DesignedChange[] }> {
+  const response = await fetch(`${API}/run/redesign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ graph, kpis, scenario, messages }),
+  });
+  return unwrap(response);
+}
+
+/** The written part of the applied-changes report. */
+export async function explainChanges(body: {
+  scenario: Scenario;
+  before: number;
+  after: number;
+  bottleneck?: string;
+  changes: {
+    id: string;
+    title: string;
+    detail: string;
+    tier: string;
+    marginal: number;
+    solo: number;
+    cost?: string;
+  }[];
+}): Promise<{ summary: string; paragraphs: Record<string, string> }> {
+  const response = await fetch(`${API}/plant/explain`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap(response);
+}
+
+export interface InlineImage {
+  mimeType: string;
+  /** Base64. */
+  data: string;
+}
+
+/** One image Nano Banana drew, with the turn that revises it next time. */
+export type Illustration =
+  | { image: InlineImage | null; text: string; turn: unknown }
+  | { error: string };
+
+/** Draws the redesign into a photo of the plant, `count` times over. */
+export async function illustrate(body: {
+  view: InlineImage;
+  subject: string;
+  changes: string[];
+  previous?: unknown;
+  notes: string[];
+  message: string;
+  count: number;
+}): Promise<{
+  check: { outside: boolean; note: string } | null;
+  results: Illustration[];
+}> {
+  const response = await fetch(`${API}/plant/illustrate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap(response);
 }

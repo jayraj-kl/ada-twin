@@ -1,4 +1,5 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
+import { deleteImages } from "@/plant/images";
 import { readJson, removeKey, writeJson } from "./storage";
 
 // Projects live in this browser until they are stored on the server; this
@@ -10,9 +11,16 @@ export const STEPS = [
   { slug: "twin", label: "Twin", blurb: "List machines and draw the material flow" },
   { slug: "scenario", label: "Scenario", blurb: "Set the conditions to test against" },
   { slug: "agents", label: "Agents", blurb: "Put a crew of AI agents on the floor" },
-  { slug: "run", label: "Run", blurb: "Watch the shift play out live in 3D" },
-  { slug: "report", label: "Report", blurb: "See where the time went and what to fix" },
-  { slug: "redesign", label: "Redesign", blurb: "Try the plant with your changes in it" },
+  {
+    slug: "results",
+    label: "Results",
+    blurb: "Run the shift, see what to fix, and redesign the plant",
+  },
+  {
+    slug: "plant",
+    label: "New plant",
+    blurb: "The applied changes, most critical first, drawn into your photos",
+  },
 ] as const;
 
 export type StepSlug = (typeof STEPS)[number]["slug"];
@@ -111,6 +119,7 @@ export function deleteProject(id: string) {
   } catch {
     // Leftover entries only cost space.
   }
+  void deleteImages(`${id}:`).catch(() => undefined);
 }
 
 /** Where one project keeps one of its values. */

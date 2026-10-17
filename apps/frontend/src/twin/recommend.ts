@@ -6,6 +6,7 @@ import {
   applyScenario,
   simulate,
 } from "@repo/sim";
+import type { Machine } from "./api";
 import type { Flow } from "./flow";
 import {
   type SavedMachine,
@@ -23,6 +24,8 @@ export interface Change {
   diffs: GraphDiff[];
   /** Maintenance crews added on top of the scenario's. */
   extraCrews: number;
+  /** Proposed by the report's rules, or asked for in the design chat. */
+  origin?: "suggested" | "asked";
 }
 
 export interface MeasuredChange extends Change {
@@ -163,6 +166,8 @@ export function applyToTwin(
 ) {
   let machines = twin.machines;
   let extras = twin.flow.extras;
+  let links = twin.flow.links;
+  let positions = twin.flow.positions;
   for (const diff of changes.flatMap(({ diffs }) => diffs)) {
     if (diff.type === "add-units") {
       machines = machines.map((machine) =>
@@ -170,6 +175,38 @@ export function applyToTwin(
           ? { ...machine, count: (machine.count ?? 1) + diff.count }
           : machine,
       );
+    } else if (diff.type === "add-spare") {
+      machines = machines.map((machine) =>
+        machine.id === diff.support
+          ? {
+              ...machine,
+              count: (machine.count ?? 1) + diff.count,
+              spares: (machine.spares ?? 0) + diff.count,
+            }
+          : machine,
+      );
+    } else if (diff.type === "insert-buffer") {
+      extras = [
+        ...extras,
+        { id: diff.id, kind: "buffer", name: diff.name, value: diff.capacity },
+      ];
+      links = links.flatMap((link) =>
+        link.from === diff.from && link.to === diff.to
+          ? [
+              { from: diff.from, to: diff.id },
+              { from: diff.id, to: diff.to },
+            ]
+          : [link],
+      );
+      // Halfway along the link it splits, in the flow diagram.
+      const from = positions[diff.from];
+      const to = positions[diff.to];
+      if (from && to) {
+        positions = {
+          ...positions,
+          [diff.id]: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 },
+        };
+      }
     } else if (diff.type === "resize-buffer") {
       extras = extras.map((extra) =>
         extra.id === diff.buffer
@@ -201,10 +238,46 @@ export function applyToTwin(
   );
   return {
     machines,
-    flow: { ...twin.flow, extras },
+    flow: { ...twin.flow, extras, links, positions },
     scenario: {
       ...twin.scenario,
       maintenanceCrews: (twin.scenario.maintenanceCrews ?? 1) + extraCrews,
     },
   };
+}
+
+/** A saved machine with whatever the twin step learned about it. */
+type KnownMachine = SavedMachine & Partial<Pick<Machine, "type" | "manufacturer" | "model">>;
+
+/**
+ * What the API needs to price each change: the change, and the machine it
+ * alters with its make and model, so the search can find real prices.
+ */
+export function costRequests(changes: Change[], machines: KnownMachine[]) {
+  return changes.map(({ id, title, detail, diffs }) => {
+    const diff = diffs[0];
+    const target =
+      diff?.type === "add-units"
+        ? diff.station
+        : diff?.type === "add-spare"
+          ? diff.support
+          : diff?.type === "set-param"
+            ? diff.node
+            : undefined;
+    const machine = machines.find((candidate) => candidate.id === target);
+    return {
+      id,
+      title,
+      detail,
+      machine: machine && {
+        id: machine.id,
+        name: machine.name,
+        type: machine.type,
+        manufacturer: machine.manufacturer,
+        model: machine.model,
+        count: machine.count,
+        auxiliary: machine.auxiliary,
+      },
+    };
+  });
 }

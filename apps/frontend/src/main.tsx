@@ -2,7 +2,7 @@ import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
-import { Link, createBrowserRouter } from "react-router";
+import { Link, Navigate, createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { Button } from "@/components/ui/button";
 import LandingPage from "@/pages/landing";
@@ -20,9 +20,8 @@ const steps = {
   twin: lazy(() => import("@/pages/steps/twin")),
   scenario: lazy(() => import("@/pages/steps/scenario")),
   agents: lazy(() => import("@/pages/steps/agents")),
-  run: lazy(() => import("@/pages/steps/run")),
-  report: lazy(() => import("@/pages/steps/report")),
-  redesign: lazy(() => import("@/pages/steps/redesign")),
+  results: lazy(() => import("@/pages/steps/results")),
+  plant: lazy(() => import("@/pages/steps/plant")),
 };
 
 function NotFound() {
@@ -49,6 +48,11 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <steps.capture /> },
       ...Object.entries(steps).map(([path, Step]) => ({ path, element: <Step /> })),
+      // Run, report and redesign are one step now.
+      ...["run", "report", "redesign"].map((path) => ({
+        path,
+        element: <Navigate to="../results" relative="path" replace />,
+      })),
     ],
   },
   { path: "*", element: <NotFound /> },

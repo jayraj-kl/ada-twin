@@ -92,7 +92,8 @@ export const ui = {
   feedMeta: "text-xs text-muted-foreground",
   quote: "text-muted-foreground",
 
-  timeline: "h-1.5 overflow-hidden rounded-full border border-border bg-muted",
+  timeline:
+    "h-2 overflow-hidden rounded-full border border-border bg-muted [&>div]:h-full [&>div]:rounded-full [&>div]:bg-primary [&>div]:transition-[width] [&>div]:duration-500",
   avatar:
     "grid size-10 flex-none place-items-center rounded-full border-2 border-ink bg-primary font-bold text-[#14140f]",
   bar: "flex h-2.5 min-w-[120px] overflow-hidden rounded-full bg-muted",

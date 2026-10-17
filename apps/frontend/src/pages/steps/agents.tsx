@@ -194,7 +194,7 @@ export default function AgentsPage() {
       </div>
 
       <div className={ui.actions}>
-        <Link to={path("run")} className={cn(ui.button, ui.primary)}>
+        <Link to={path("results")} className={cn(ui.button, ui.primary)}>
           Run the shift
         </Link>
         <Link to={path("scenario")} className={ui.button}>

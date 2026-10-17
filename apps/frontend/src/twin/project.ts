@@ -19,6 +19,16 @@ export const SCENARIO_KEY = "twin-scenario";
 export const AGENTS_KEY = "twin-agents";
 export const RUN_KEY = "twin-run";
 export const ACCEPTED_KEY = "twin-accepted";
+// Cost estimates for recommended changes, by currency and change, so the web
+// is not searched again each time the report opens.
+export const COSTS_KEY = "twin-costs";
+/** Each version of the redesign, oldest first. */
+export const HISTORY_KEY = "twin-redesign-history";
+export const DESIGN_CHAT_KEY = "twin-design-chat";
+/** Each redesign applied to the twin, for the last step's report; newest last. */
+export const APPLIED_KEY = "twin-applied";
+/** The photo conversations of the last step, by applied redesign and view. */
+export const PLANT_CHAT_KEY = "twin-plant-chat";
 
 // Written by `pnpm --filter @repo/scripts fetch-world <worldId>`.
 export const WORLD_DIR = "/worlds/current";
@@ -42,6 +52,8 @@ export interface SavedMachine {
   auxiliarySuggested?: boolean;
   /** Its colour on the twin step's pins and flow. */
   color?: string;
+  /** For auxiliary equipment: standby units among `count`. */
+  spares?: number;
 }
 
 // `shown` is the unit the user edits in, and how many stored units make one.
@@ -112,7 +124,15 @@ export function buildGraph(machines: SavedMachine[], flow: Flow): FactoryGraph {
         mtbf: stationParam(machine, "mtbf"),
         mttr: stationParam(machine, "mttr"),
       };
-      if (machine.auxiliary) return { ...common, kind: "support" };
+      if (machine.auxiliary) {
+        return {
+          ...common,
+          kind: "support",
+          ...(machine.spares
+            ? { spares: param(machine.spares, "units", { kind: "user" }) }
+            : {}),
+        };
+      }
       return {
         ...common,
         kind: "station",

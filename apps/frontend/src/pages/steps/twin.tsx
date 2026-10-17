@@ -19,13 +19,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { AnimatePresence, motion, useDragControls } from "motion/react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { motionTokens, springs } from "@/lib/motion";
 import { readJson, writeJson } from "@/lib/storage";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { NumberField } from "@/components/ui/number-field";
 import { MACHINE_COLORS, nextColor, withColors } from "@/twin/colors";
 import {
@@ -1546,14 +1541,3 @@ const glassButton =
 
 const darkPill =
   "rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white outline-none hover:border-primary hover:text-primary focus-visible:ring-[3px] focus-visible:ring-primary/50";
-
-function useMediaQuery(query: string) {
-  return useSyncExternalStore(
-    (listener) => {
-      const list = window.matchMedia(query);
-      list.addEventListener("change", listener);
-      return () => list.removeEventListener("change", listener);
-    },
-    () => window.matchMedia(query).matches,
-  );
-}

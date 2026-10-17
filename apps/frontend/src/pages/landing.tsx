@@ -128,7 +128,7 @@ export default function LandingPage() {
             whileInView="shown"
             viewport={{ once: true, margin: "-80px" }}
             variants={stagger(0.06)}
-            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
           >
             {STEPS.map((step, index) => (
               <motion.li

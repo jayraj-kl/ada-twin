@@ -110,8 +110,10 @@ function ProjectCard({
   project: Project;
   onRename: () => void;
 }) {
-  const step = STEPS[project.reached] ?? STEPS[0];
-  const progress = (project.reached + 1) / STEPS.length;
+  // Projects from before run, report and redesign merged can be past the end.
+  const reached = Math.min(project.reached, STEPS.length - 1);
+  const step = STEPS[reached]!;
+  const progress = (reached + 1) / STEPS.length;
   return (
     <motion.li
       layout
@@ -128,7 +130,7 @@ function ProjectCard({
       >
         <span className="flex flex-wrap gap-1.5">
           <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-ink bg-primary px-2.5 py-0.5 text-[11px] font-semibold text-[#14140f]">
-            Step {project.reached + 1} of {STEPS.length} · {step.label}
+            Step {reached + 1} of {STEPS.length} · {step.label}
           </span>
           {project.sample && (
             <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-[#14140f] px-2.5 py-0.5 font-mono text-[11px] font-semibold tracking-[0.08em] text-[#f5f5eb] uppercase dark:border dark:border-border">

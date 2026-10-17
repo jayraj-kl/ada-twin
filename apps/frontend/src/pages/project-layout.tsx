@@ -15,7 +15,7 @@ import {
 } from "@/lib/projects";
 
 // Steps whose page is the world itself, filling everything under the top bar.
-const IMMERSIVE: readonly StepSlug[] = ["twin"];
+const IMMERSIVE: readonly StepSlug[] = ["twin", "results"];
 
 function currentStep(pathname: string): StepSlug {
   const last = pathname.split("/").filter(Boolean).at(-1);
