@@ -1,9 +1,11 @@
 import {
   type Machine,
+  type CostedChange,
   createGeminiModel,
   type CurrentFlow,
   type FlowMessage,
   draftFlow,
+  estimateCosts,
   fillParameters,
   locateMachines,
   needsInfo,
@@ -224,4 +226,43 @@ twin.post("/parameters", async (c) => {
     })),
   );
   return c.json(await fillParameters(model(), machine, documents));
+});
+
+const MAX_COSTED = 10;
+
+twin.post("/costs", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    changes?: unknown;
+    currency?: unknown;
+  } | null;
+  if (
+    !Array.isArray(body?.changes) ||
+    body.changes.length === 0 ||
+    body.changes.length > MAX_COSTED
+  ) {
+    throw new HTTPException(400, {
+      message: `Expected 1 to ${MAX_COSTED} changes to price`,
+    });
+  }
+  const changes: CostedChange[] = body.changes.map((raw: unknown) => {
+    const change = (raw ?? {}) as Record<string, unknown>;
+    if (typeof change.id !== "string" || typeof change.title !== "string") {
+      throw new HTTPException(400, {
+        message: "Each change needs an id and a title",
+      });
+    }
+    return {
+      id: change.id,
+      title: change.title,
+      detail: typeof change.detail === "string" ? change.detail : "",
+      machine: change.machine ? parseMachine(change.machine) : undefined,
+    };
+  });
+  const currency =
+    typeof body.currency === "string" && /^[A-Z]{3}$/.test(body.currency)
+      ? body.currency
+      : "USD";
+  return c.json({
+    estimates: await estimateCosts(model(), changes, { currency }),
+  });
 });
