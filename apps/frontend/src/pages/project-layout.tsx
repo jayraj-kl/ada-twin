@@ -1,8 +1,16 @@
 import { ChevronRightIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { Suspense, useEffect } from "react";
-import { Link, Navigate, useLocation, useOutlet, useParams } from "react-router";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useOutlet,
+  useParams,
+} from "react-router";
+import { ModelPicker } from "@/components/model-picker";
 import { ProfileMenu, TopBar } from "@/components/top-bar";
+import { useModelsConfirmed } from "@/lib/models";
 import { motionTokens } from "@/lib/motion";
 import { useProfile } from "@/lib/profile";
 import {
@@ -39,6 +47,10 @@ export default function ProjectLayout() {
   const project = useProjects().find(({ id }) => id === projectId);
   const step = currentStep(pathname);
   const immersive = IMMERSIVE.includes(step);
+  // The capture step asks about the models first; until then the top bar
+  // leaves the picker to it.
+  const modelsConfirmed = useModelsConfirmed();
+  const showPicker = modelsConfirmed || step !== "capture";
   // A snapshot, so the page fading out keeps showing what it showed.
   const outlet = useOutlet();
 
@@ -62,7 +74,17 @@ export default function ProjectLayout() {
   return (
     <ProjectContext.Provider value={project.id}>
       <div className={immersive ? "flex h-svh flex-col" : "min-h-svh"}>
-        <TopBar logoTo="/workspace" wide compact end={<ProfileMenu />}>
+        <TopBar
+          logoTo="/workspace"
+          wide
+          compact
+          end={
+            <>
+              {showPicker && <ModelPicker />}
+              <ProfileMenu />
+            </>
+          }
+        >
           <nav
             aria-label="Breadcrumb"
             className="flex min-w-0 items-center gap-1 text-sm"
@@ -111,9 +133,7 @@ export default function ProjectLayout() {
               }}
               className={immersive ? "h-full" : undefined}
             >
-              <Suspense fallback={<StepFallback />}>
-                {outlet}
-              </Suspense>
+              <Suspense fallback={<StepFallback />}>{outlet}</Suspense>
             </motion.div>
           </AnimatePresence>
         </main>

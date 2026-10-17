@@ -31,6 +31,10 @@ export function perPart(estimate: CostEstimate, gain: number) {
 export const signed = (value: number, digits = 0) =>
   `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(digits)}`;
 
+/** A change in a count averaged over days: whole when it is whole, else to one decimal. */
+export const signedAverage = (value: number) =>
+  signed(value, Number.isInteger(value) ? 0 : 1);
+
 export function headline(run: StoredRun): string {
   const gained = run.kpis.completed - run.baseline.completed;
   const target = run.scenario.targets?.throughputPerShift;

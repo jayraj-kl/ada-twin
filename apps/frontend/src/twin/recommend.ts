@@ -1,16 +1,21 @@
 import {
   type GraphDiff,
   type Kpis,
+  type Param,
   type Scenario,
+  type Spread,
   applyDiffs,
   applyScenario,
-  simulate,
+  averageKpis,
+  simulateDays,
+  spread,
 } from "@repo/sim";
-import type { Machine } from "./api";
+import type { Machine, RunDigest, ScoutKind } from "./api";
 import type { Flow } from "./flow";
 import {
   type SavedMachine,
   type StoredRun,
+  daysOf,
   percent,
   stationParam,
 } from "./project";
@@ -24,42 +29,123 @@ export interface Change {
   diffs: GraphDiff[];
   /** Maintenance crews added on top of the scenario's. */
   extraCrews: number;
-  /** Proposed by the report's rules, or asked for in the design chat. */
-  origin?: "suggested" | "asked";
+  /**
+   * Proposed by the report's rules, asked for in the design chat, or found
+   * by the AI looking for equipment the plant does not have.
+   */
+  origin?: "suggested" | "asked" | "scouted";
+  /** For scouted changes: new equipment, or spares on the shelf. */
+  kind?: ScoutKind;
+  /** For scouted changes: the problem it answers, with the run's numbers. */
+  problem?: string;
+  /** Pages its estimates came from. */
+  sources?: { url: string; title?: string }[];
 }
 
 export interface MeasuredChange extends Change {
-  /** Parts per shift gained over the unchanged plant, on standard rules. */
+  /**
+   * Parts per shift gained over the unchanged plant on standard rules,
+   * averaged over the run's days.
+   */
   gain: number;
+  /** How the gain ranged day by day; missing from changes measured before. */
+  range?: Spread;
 }
+
+/** A plant measured over the run's days: each day, and the average of them. */
+export interface Measured {
+  days: Kpis[];
+  average: Kpis;
+}
+
+/** The unchanged plant over the run's days. */
+export const baselineOf = (run: StoredRun): Measured => ({
+  days: daysOf(run),
+  average: averageKpis(daysOf(run)),
+});
+
+/** Parts per shift `after` gained over `before`, paired day by day. */
+export const gainOf = (before: Measured, after: Measured): Spread =>
+  spread(
+    after.days.map(
+      ({ completed }, day) => completed - (before.days[day]?.completed ?? 0),
+    ),
+  );
 
 // A station blocked less than this is not worth a bigger buffer.
 const WORTH_UNBLOCKING = 0.02;
 
 /**
- * Re-runs the shift with `changes` made to the plant. Standard rules decide
- * rather than the agents, so a change is measured in seconds and against the
- * same decisions every time; the seed is the run's, so the same failures hit.
+ * Re-runs the run's days with `changes` made to the plant. Standard rules
+ * decide rather than the agents, so a change is measured in seconds and
+ * against the same decisions every time; the seeds are the run's, so each day
+ * starts from the same random events as on the unchanged plant.
  */
 export async function measure(
   run: StoredRun,
   changes: Pick<Change, "diffs" | "extraCrews">[],
-): Promise<Kpis> {
+): Promise<Measured> {
   const applied = applyScenario(run.graph, run.scenario);
   const graph = applyDiffs(
     applied.graph,
     changes.flatMap(({ diffs }) => diffs),
   );
-  const { kpis } = await simulate(graph, {
-    seed: run.seed,
-    horizon: applied.horizon,
-    maintenanceCrews:
-      applied.maintenanceCrews +
-      changes.reduce((sum, { extraCrews }) => sum + extraCrews, 0),
-    tickInterval: run.tickMinutes * 60,
-    recordEvents: false,
-  });
-  return kpis;
+  const days = await simulateDays(
+    graph,
+    {
+      seed: run.seed,
+      horizon: applied.horizon,
+      maintenanceCrews:
+        applied.maintenanceCrews +
+        changes.reduce((sum, { extraCrews }) => sum + extraCrews, 0),
+      tickInterval: run.tickMinutes * 60,
+    },
+    daysOf(run).length,
+  );
+  return { days, average: averageKpis(days) };
+}
+
+/**
+ * The run as the equipment scout reads it: each station's time on standard
+ * rules averaged over the run's days, its breakdowns in the run itself, and
+ * how the agents did.
+ */
+export function digestOf(run: StoredRun): RunDigest {
+  const { days, average } = baselineOf(run);
+  const failures = new Map<string, number>();
+  for (const event of run.events) {
+    if (event.type === "failure") {
+      failures.set(event.node, (failures.get(event.node) ?? 0) + 1);
+    }
+  }
+  const shipped = days.map(({ completed }) => completed);
+  return {
+    shipped: average.completed,
+    range: { min: Math.min(...shipped), max: Math.max(...shipped) },
+    days: days.length,
+    bottleneck: average.bottleneck ?? undefined,
+    stations: Object.entries(average.stations).map(([id, station]) => ({
+      id,
+      working: station.utilisation,
+      blocked: station.blocked,
+      idle: station.idle,
+      down: station.down,
+      stopped: station.stopped || undefined,
+      failures: failures.get(id) ?? 0,
+    })),
+    supports: Object.entries(average.supports ?? {}).map(([id, support]) => ({
+      id,
+      down: support.down,
+      failures: failures.get(id) ?? 0,
+    })),
+    decisions:
+      run.agents.length > 0
+        ? {
+            total: run.decisions.length,
+            fallbacks: run.decisions.filter(({ fallback }) => fallback).length,
+          }
+        : undefined,
+  };
 }
 
 /** The changes worth measuring, picked from where the baseline run lost time. */
@@ -67,7 +153,9 @@ export function proposeChanges(run: StoredRun): Change[] {
   const { graph } = applyScenario(run.graph, run.scenario);
   const stations = graph.nodes.filter((node) => node.kind === "station");
   if (stations.length === 0) return [];
-  const kpis = run.baseline.stations;
+  // An average day, so one bad breakdown does not pick the changes.
+  const average = baselineOf(run).average;
+  const kpis = average.stations;
   const most = (share: "blocked" | "down") =>
     stations.reduce((worst, station) =>
       (kpis[station.id]?.[share] ?? 0) > (kpis[worst.id]?.[share] ?? 0)
@@ -76,7 +164,7 @@ export function proposeChanges(run: StoredRun): Change[] {
     );
   const changes: Change[] = [];
 
-  const bottleneck = stations.find(({ id }) => id === run.baseline.bottleneck);
+  const bottleneck = stations.find(({ id }) => id === average.bottleneck);
   if (bottleneck) {
     const units = bottleneck.units.value;
     changes.push({
@@ -150,11 +238,12 @@ export function proposeChanges(run: StoredRun): Change[] {
 export async function measureChanges(
   run: StoredRun,
 ): Promise<MeasuredChange[]> {
+  const before = baselineOf(run);
   const measured = await Promise.all(
-    proposeChanges(run).map(async (change) => ({
-      ...change,
-      gain: (await measure(run, [change])).completed - run.baseline.completed,
-    })),
+    proposeChanges(run).map(async (change) => {
+      const range = gainOf(before, await measure(run, [change]));
+      return { ...change, gain: range.mean, range };
+    }),
   );
   return measured.sort((a, b) => b.gain - a.gain);
 }
@@ -167,9 +256,99 @@ export function applyToTwin(
   let machines = twin.machines;
   let extras = twin.flow.extras;
   let links = twin.flow.links;
+  let needs = twin.flow.needs ?? [];
   let positions = twin.flow.positions;
+  // A new machine's estimated numbers, kept with where they came from.
+  const estimates = (
+    values: Partial<
+      Record<
+        "cycleTime" | "cycleTimeVariation" | "mtbf" | "mttr" | "scrapRate",
+        number
+      >
+    >,
+    provenance: Param["provenance"] = { kind: "assumed" },
+  ) =>
+    Object.fromEntries(
+      Object.entries(values).flatMap(([key, value]) =>
+        value === undefined
+          ? []
+          : [
+              [
+                key,
+                {
+                  value,
+                  unit:
+                    key === "scrapRate" || key === "cycleTimeVariation"
+                      ? "share"
+                      : "s",
+                  provenance,
+                },
+              ],
+            ],
+      ),
+    );
   for (const diff of changes.flatMap(({ diffs }) => diffs)) {
-    if (diff.type === "add-units") {
+    if (diff.type === "insert-station") {
+      machines = [
+        ...machines,
+        {
+          id: diff.id,
+          name: diff.name,
+          count: diff.units,
+          added: "redesign",
+          params: estimates(
+            {
+              cycleTime: diff.cycleTime,
+              cycleTimeVariation: diff.cycleTimeVariation,
+              mtbf: diff.mtbf,
+              mttr: diff.mttr,
+              scrapRate: diff.scrapRate,
+            },
+            diff.provenance,
+          ),
+        },
+      ];
+      links = links.flatMap((link) =>
+        link.from === diff.from && link.to === diff.to
+          ? [
+              { from: diff.from, to: diff.id },
+              { from: diff.id, to: diff.to },
+            ]
+          : [link],
+      );
+      const from = positions[diff.from];
+      const to = positions[diff.to];
+      if (from && to) {
+        positions = {
+          ...positions,
+          [diff.id]: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 },
+        };
+      }
+    } else if (diff.type === "add-support") {
+      machines = [
+        ...machines,
+        {
+          id: diff.id,
+          name: diff.name,
+          count: diff.units,
+          auxiliary: true,
+          added: "redesign",
+          params: estimates(
+            { mtbf: diff.mtbf, mttr: diff.mttr },
+            diff.provenance,
+          ),
+        },
+      ];
+      needs = [...needs, ...diff.neededBy.map((to) => ({ from: diff.id, to }))];
+      // Beside the first machine that needs it, in the flow diagram.
+      const beside = positions[diff.neededBy[0] ?? ""];
+      if (beside) {
+        positions = {
+          ...positions,
+          [diff.id]: { x: beside.x + 240, y: beside.y },
+        };
+      }
+    } else if (diff.type === "add-units") {
       machines = machines.map((machine) =>
         machine.id === diff.station
           ? { ...machine, count: (machine.count ?? 1) + diff.count }
@@ -238,7 +417,7 @@ export function applyToTwin(
   );
   return {
     machines,
-    flow: { ...twin.flow, extras, links, positions },
+    flow: { ...twin.flow, extras, links, needs, positions },
     scenario: {
       ...twin.scenario,
       maintenanceCrews: (twin.scenario.maintenanceCrews ?? 1) + extraCrews,
@@ -247,7 +426,8 @@ export function applyToTwin(
 }
 
 /** A saved machine with whatever the twin step learned about it. */
-type KnownMachine = SavedMachine & Partial<Pick<Machine, "type" | "manufacturer" | "model">>;
+type KnownMachine = SavedMachine &
+  Partial<Pick<Machine, "type" | "manufacturer" | "model">>;
 
 /**
  * What the API needs to price each change: the change, and the machine it
@@ -255,6 +435,23 @@ type KnownMachine = SavedMachine & Partial<Pick<Machine, "type" | "manufacturer"
  */
 export function costRequests(changes: Change[], machines: KnownMachine[]) {
   return changes.map(({ id, title, detail, diffs }) => {
+    // New equipment is priced as itself, not as what it improves.
+    const added = diffs.find(
+      (diff) => diff.type === "insert-station" || diff.type === "add-support",
+    );
+    if (added?.type === "insert-station" || added?.type === "add-support") {
+      return {
+        id,
+        title,
+        detail,
+        machine: {
+          id: added.id,
+          name: added.name,
+          count: added.units,
+          auxiliary: added.type === "add-support",
+        },
+      };
+    }
     const diff = diffs[0];
     const target =
       diff?.type === "add-units"

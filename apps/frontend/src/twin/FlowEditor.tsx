@@ -4,6 +4,7 @@ import {
   Controls,
   type Edge,
   type EdgeChange,
+  type FitViewOptions,
   Handle,
   MarkerType,
   type Node,
@@ -15,10 +16,12 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { ChevronUpIcon, WorkflowIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { NumberField } from "@/components/ui/number-field";
 import { ui } from "@/lib/ui";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 import {
   EXTRA_DEFAULTS,
@@ -190,6 +193,9 @@ function buildEdges(flow: Flow, current: Edge[]): Edge[] {
   ];
 }
 
+const floatingCard =
+  "pointer-events-auto max-h-[45dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-card/90 p-4 shadow-hard-sm backdrop-blur-md";
+
 /**
  * The material flow as an editable diagram: drag between the dots on two
  * nodes to link them, select a node or link to change or remove it.
@@ -200,6 +206,8 @@ export function FlowEditor({
   onChange,
   layoutVersion,
   fill,
+  header,
+  overlayClassName,
 }: {
   machines: FlowMachine[];
   flow: Flow;
@@ -207,13 +215,23 @@ export function FlowEditor({
   onChange: (update: (flow: Flow) => Flow) => void;
   /** Bump to re-centre the view, e.g. after a new draft is laid out. */
   layoutVersion: number;
-  /** Grow the diagram to the height the parent gives, not a fixed 600px. */
+  /**
+   * Fill the parent edge to edge, with the toolbar and the selected node's
+   * settings floating over the diagram instead of above and below it.
+   */
   fill?: boolean;
+  /** With `fill`, shown in the floating card above the toolbar. */
+  header?: ReactNode;
+  /** With `fill`, keeps the floating cards clear of the page's own bars. */
+  overlayClassName?: string;
 }) {
   // Follows the app's theme, not the system's.
   const { resolvedTheme } = useTheme();
   const [nodes, setNodes] = useState(() => buildNodes(machines, flow, []));
   const [edges, setEdges] = useState(() => buildEdges(flow, []));
+  const desktop = useMediaQuery("(min-width: 640px)");
+  // On phones the card would hide most of the diagram, so it starts folded.
+  const [folded, setFolded] = useState(!desktop);
   const [selected, setSelected] = useState<{
     node?: string;
     link?: string;
@@ -358,49 +376,68 @@ export function FlowEditor({
   const nameOf = (id: string) =>
     nodes.find((node) => node.id === id)?.data.name ?? id;
 
-  return (
-    <div className={cn(ui.stack, fill && "h-full min-h-0")}>
-      <div className={ui.row}>
-        {(["source", "buffer", "sink"] as const).map((kind) => (
-          <button
-            key={kind}
-            className={ui.button}
-            onClick={() => addExtra(kind)}
-          >
-            Add a {kind}
-          </button>
-        ))}
-        <span className={ui.hint}>
-          Drag from the dot under one node to the dot on top of another to link
-          them. Click a node or link to change or remove it.
-        </span>
-      </div>
-
-      <div className={cn(ui.flowCanvas, fill && "h-auto min-h-0 flex-1")}>
-        <ReactFlow<MemberNode>
-          key={layoutVersion}
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={NODE_TYPES}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          isValidConnection={isNewLink}
-          onSelectionChange={onSelectionChange}
-          deleteKeyCode={["Backspace", "Delete"]}
-          colorMode={resolvedTheme === "dark" ? "dark" : "light"}
-          fitView
-          fitViewOptions={{ maxZoom: 1 }}
-          proOptions={{ hideAttribution: true }}
+  // Full screen, the diagram is framed in the space the bars and the card
+  // leave, not under them.
+  const fitOptions: FitViewOptions = {
+    maxZoom: 1,
+    ...(fill && {
+      padding: {
+        top: "96px",
+        // Phones stack the chat and the buttons below the diagram.
+        bottom: desktop ? "120px" : "190px",
+        left: desktop && !folded ? "500px" : "24px",
+        right: "48px",
+      },
+    }),
+  };
+  const toolbar = (
+    <div className={ui.row}>
+      {(["source", "buffer", "sink"] as const).map((kind) => (
+        <button
+          key={kind}
+          className={ui.button}
+          onClick={() => addExtra(kind)}
         >
-          <Background />
-          <Controls showInteractive={false} />
-        </ReactFlow>
-      </div>
-
+          Add a {kind}
+        </button>
+      ))}
+      <span className={ui.hint}>
+        Drag from the dot under one node to the dot on top of another to link
+        them. Click a node or link to change or remove it.
+      </span>
+    </div>
+  );
+  const canvas = (
+    <ReactFlow<MemberNode>
+      key={layoutVersion}
+      nodes={nodes}
+      edges={edges}
+      nodeTypes={NODE_TYPES}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      isValidConnection={isNewLink}
+      onSelectionChange={onSelectionChange}
+      deleteKeyCode={["Backspace", "Delete"]}
+      colorMode={resolvedTheme === "dark" ? "dark" : "light"}
+      fitView
+      fitViewOptions={fitOptions}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background />
+      <Controls
+        showInteractive={false}
+        fitViewOptions={fitOptions}
+        // On phones the chat covers the corner; pinch to zoom instead.
+        className={cn(fill && "max-sm:hidden!")}
+      />
+    </ReactFlow>
+  );
+  const selection = (
+    <>
       {selectedExtra && (
         <div className={ui.row}>
-          <div className={ui.field} style={{ flex: 1 }}>
+          <div className={cn(ui.field, "min-w-40")} style={{ flex: 1 }}>
             <label htmlFor="flow-name">
               {KIND_LABELS[selectedExtra.kind]} name
             </label>
@@ -446,7 +483,7 @@ export function FlowEditor({
       {selectedMachine && !selectedMachine.auxiliary && (
         <p className={ui.hint}>
           {selectedMachine.name} is one of your machines: rename or remove it in
-          its card above. If parts never pass through it, mark it auxiliary
+          the machines panel. If parts never pass through it, mark it auxiliary
           there.
         </p>
       )}
@@ -531,6 +568,70 @@ export function FlowEditor({
           </button>
         </div>
       )}
+    </>
+  );
+  const anySelected = Boolean(
+    selectedExtra || selectedMachine || selectedLink || selectedNeed,
+  );
+
+  if (fill) {
+    return (
+      <div className="relative h-full min-h-0">
+        <div
+          className={cn(
+            ui.flowCanvas,
+            "absolute inset-0 h-auto rounded-none border-0",
+          )}
+        >
+          {canvas}
+        </div>
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-0 flex flex-col items-start gap-3",
+            overlayClassName,
+          )}
+        >
+          {folded ? (
+            <button
+              type="button"
+              onClick={() => setFolded(false)}
+              aria-expanded={false}
+              className="pointer-events-auto flex items-center gap-2 rounded-full border border-border bg-card/90 px-3.5 py-2 text-[13px] font-semibold shadow-hard-sm backdrop-blur-md outline-none hover:border-ink focus-visible:ring-[3px] focus-visible:ring-ring/40"
+            >
+              <WorkflowIcon className="size-3.5" />
+              Flow tools
+              <ChevronUpIcon className="size-3.5 rotate-180" />
+            </button>
+          ) : (
+            <div className={cn(floatingCard, ui.stack, "relative gap-3 pr-10")}>
+              <button
+                type="button"
+                onClick={() => setFolded(true)}
+                aria-expanded
+                aria-label="Fold the flow tools"
+                className="absolute top-2 right-2 grid size-7 place-items-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+              >
+                <ChevronUpIcon className="size-4" />
+              </button>
+              {header}
+              {toolbar}
+            </div>
+          )}
+          {anySelected && (
+            <div className={cn(floatingCard, ui.stack, "gap-3")}>
+              {selection}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={ui.stack}>
+      {toolbar}
+      <div className={ui.flowCanvas}>{canvas}</div>
+      {selection}
     </div>
   );
 }

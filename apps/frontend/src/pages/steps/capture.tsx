@@ -15,7 +15,9 @@ import {
   useState,
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
+import { ModelHint } from "@/components/model-picker";
 import { Button } from "@/components/ui/button";
+import { useModelsConfirmed } from "@/lib/models";
 import { motionTokens, springs } from "@/lib/motion";
 import {
   deleteProject,
@@ -49,8 +51,7 @@ interface Upload {
 }
 
 type World =
-  | { state: "checking" | "missing" }
-  | { state: "ready"; scale?: number };
+  { state: "checking" | "missing" } | { state: "ready"; scale?: number };
 
 async function readUpload(file: File): Promise<Upload> {
   const preview = URL.createObjectURL(file);
@@ -247,7 +248,9 @@ function PanoTile({
       ) : (
         <span className="truncate px-1 text-xs font-medium">{room}</span>
       )}
-      {problem && <span className="px-1 text-xs text-destructive">{problem}</span>}
+      {problem && (
+        <span className="px-1 text-xs text-destructive">{problem}</span>
+      )}
     </motion.li>
   );
 }
@@ -282,7 +285,9 @@ function SampleDoor({ onOpen }: { onOpen: () => void }) {
         </span>
       </div>
       <div>
-        <h2 className="font-bold tracking-tight">Try it on a real boiler room</h2>
+        <h2 className="font-bold tracking-tight">
+          Try it on a real boiler room
+        </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Opens a separate sample project with one panorama and a short process
           description. Nothing you upload is mixed in, and you can delete it any
@@ -394,7 +399,8 @@ export default function CapturePage() {
   const previews = useRef(uploads);
   previews.current = uploads;
   useEffect(
-    () => () => previews.current.forEach(({ preview }) => URL.revokeObjectURL(preview)),
+    () => () =>
+      previews.current.forEach(({ preview }) => URL.revokeObjectURL(preview)),
     [],
   );
 
@@ -456,6 +462,7 @@ export default function CapturePage() {
     });
   }
 
+  const modelsConfirmed = useModelsConfirmed();
   const usable = uploads.filter((upload) => !upload.problem).length;
   const empty = uploads.length === 0 && processLoaded && process.trim() === "";
   const showDoor = !sample && empty && world.state === "ready";
@@ -469,6 +476,20 @@ export default function CapturePage() {
         Bring the 360° panoramas your 3D world is built from, one per room or
         hall, and describe how material moves through the floor.
       </p>
+
+      {/* Asked once, before the first AI step; then it lives in the top bar. */}
+      <AnimatePresence initial={false}>
+        {!modelsConfirmed && (
+          <motion.div
+            key="model-prompt"
+            exit={{ opacity: 0, height: 0, y: -16 }}
+            transition={springs.snappy}
+            className="overflow-hidden"
+          >
+            <ModelHint />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <section
@@ -604,7 +625,10 @@ export default function CapturePage() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 px-3 pt-1 pb-3">
             {sample ? (
-              <span id="sample-note" className="px-1 text-xs text-muted-foreground">
+              <span
+                id="sample-note"
+                className="px-1 text-xs text-muted-foreground"
+              >
                 Sample description · {SAMPLE.credit}
               </span>
             ) : (
@@ -626,7 +650,11 @@ export default function CapturePage() {
               </div>
             )}
             {sample ? (
-              <Button asChild size="sm" className="hover:-translate-y-px hover:shadow-hard-sm">
+              <Button
+                asChild
+                size="sm"
+                className="hover:-translate-y-px hover:shadow-hard-sm"
+              >
                 <Link to={path("twin")}>
                   Open the sample twin <ArrowRightIcon />
                 </Link>

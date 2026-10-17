@@ -138,6 +138,8 @@ interface Entry extends Machine {
   params?: Record<string, Param>;
   /** Marked auxiliary by the AI draft, and not yet confirmed by the user. */
   auxiliarySuggested?: boolean;
+  /** New equipment an applied redesign added. */
+  added?: "redesign";
   documents?: File[];
   busy?: boolean;
   problem?: string;
@@ -1073,8 +1075,18 @@ export default function TwinPage() {
                         style={{ backgroundColor: entry.color }}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold">
-                          {entry.name}
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-sm font-semibold">
+                            {entry.name}
+                          </span>
+                          {entry.added && (
+                            <span
+                              className="shrink-0 rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold tracking-wide text-[#14140f] uppercase"
+                              title="Added by a redesign you applied. Pin it where it will stand."
+                            >
+                              New · from redesign
+                            </span>
+                          )}
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
                           {count > 1 && `${count} units · `}
@@ -1139,6 +1151,64 @@ export default function TwinPage() {
     </>
   );
 
+  // Over the diagram, in its floating card: what it is, and the draft button.
+  const flowHeader = (
+    <>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-bold tracking-tight">
+            Material flow
+            <span className="mt-0.5 block font-mono text-xs font-normal text-muted-foreground">
+              {members.length} nodes · {flow.links.length} links
+              {(flow.needs?.length ?? 0) > 0 &&
+                ` · ${flow.needs!.length} needed by`}
+            </span>
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {process ? (
+              <>Your process: “{process}” </>
+            ) : (
+              <>
+                You have not described your process, so a draft goes by the
+                photo and machine names alone.{" "}
+              </>
+            )}
+            <Link
+              to={path("capture")}
+              className="font-semibold text-foreground underline underline-offset-2"
+            >
+              Edit
+            </Link>
+          </p>
+          {flowMessage && <p className={cn(ui.hint, "mt-1")}>{flowMessage}</p>}
+        </div>
+        <button
+          className={ui.primary}
+          disabled={drafting || entries.length === 0}
+          onClick={draftTheFlow}
+        >
+          <SparklesIcon />
+          {drafting ? "Drafting…" : "Draft the flow"}
+        </button>
+      </div>
+
+      {(problems.length > 0 || warnings.length > 0) && (
+        <ul className="max-h-28 list-none space-y-1 overflow-y-auto text-xs">
+          {problems.map((problem) => (
+            <li key={problem} className={ui.poor}>
+              {problem}
+            </li>
+          ))}
+          {warnings.map((warning) => (
+            <li key={warning} className={ui.fair}>
+              {warning}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+
   // Where floating controls stop, so the open drawer does not cover them.
   const besideDrawer = desktop && drawer ? "sm:pr-[436px]" : "sm:pr-4";
 
@@ -1159,92 +1229,43 @@ export default function TwinPage() {
       />
 
       {view === "flow" && (
-        <div
-          className={cn(
-            "absolute inset-0 flex flex-col gap-3 overflow-y-auto bg-background px-4 pt-20 pb-28 transition-[padding] duration-300",
-            besideDrawer,
-            "sm:pl-6",
-          )}
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="max-w-[80ch]">
-              <h2 className="text-lg font-bold tracking-tight">
-                Material flow
-                <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
-                  {members.length} nodes · {flow.links.length} links
-                  {(flow.needs?.length ?? 0) > 0 &&
-                    ` · ${flow.needs!.length} needed by`}
-                </span>
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {process ? (
-                  <>Your process: “{process}” </>
-                ) : (
-                  <>
-                    You have not described your process, so a draft goes by the
-                    photo and machine names alone.{" "}
-                  </>
-                )}
-                <Link
-                  to={path("capture")}
-                  className="font-semibold text-foreground underline underline-offset-2"
-                >
-                  Edit
-                </Link>
-              </p>
-              {flowMessage && (
-                <p className={cn(ui.hint, "mt-1")}>{flowMessage}</p>
-              )}
-            </div>
-            <button
-              className={ui.primary}
-              disabled={drafting || entries.length === 0}
-              onClick={draftTheFlow}
-            >
-              <SparklesIcon />
-              {drafting ? "Drafting…" : "Draft the flow"}
-            </button>
-          </div>
-
-          {(problems.length > 0 || warnings.length > 0) && (
-            <ul className="max-h-28 list-none space-y-1 overflow-y-auto text-sm">
-              {problems.map((problem) => (
-                <li key={problem} className={ui.poor}>
-                  {problem}
-                </li>
-              ))}
-              {warnings.map((warning) => (
-                <li key={warning} className={ui.fair}>
-                  {warning}
-                </li>
-              ))}
-            </ul>
-          )}
-
+        <div className="absolute inset-0 bg-background">
           {entries.length === 0 ? (
-            <div className="grid flex-1 place-items-center text-center text-sm text-muted-foreground">
-              <p>
-                Add your machines first; each one becomes a node here.
-                <br />
-                <button
-                  type="button"
-                  onClick={() => setDrawer(true)}
-                  className="mt-2 font-semibold text-foreground underline underline-offset-2"
-                >
-                  Open the machines panel
-                </button>
-              </p>
+            <div
+              className={cn(
+                "flex h-full flex-col gap-3 px-4 pt-20 pb-28 sm:pl-6",
+                besideDrawer,
+              )}
+            >
+              {flowHeader}
+              <div className="grid flex-1 place-items-center text-center text-sm text-muted-foreground">
+                <p>
+                  Add your machines first; each one becomes a node here.
+                  <br />
+                  <button
+                    type="button"
+                    onClick={() => setDrawer(true)}
+                    className="mt-2 font-semibold text-foreground underline underline-offset-2"
+                  >
+                    Open the machines panel
+                  </button>
+                </p>
+              </div>
             </div>
           ) : (
-            <div className="min-h-[420px] flex-1">
-              <FlowEditor
-                machines={flowMachines}
-                flow={flow}
-                onChange={setFlow}
-                layoutVersion={layoutVersion}
-                fill
-              />
-            </div>
+            <FlowEditor
+              machines={flowMachines}
+              flow={flow}
+              onChange={setFlow}
+              layoutVersion={layoutVersion}
+              fill
+              header={flowHeader}
+              // Clear of the view switch above and the chat below.
+              overlayClassName={cn(
+                "px-4 pt-20 pb-28 transition-[padding] duration-300 sm:pl-6",
+                besideDrawer,
+              )}
+            />
           )}
         </div>
       )}

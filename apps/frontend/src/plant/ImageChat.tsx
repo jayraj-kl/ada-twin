@@ -9,6 +9,7 @@ import {
 import { motion } from "motion/react";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
+import { effectiveModels, useModelCatalog, useModelChoice } from "@/lib/models";
 import { motionTokens, springs } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { PlantView } from "./views";
@@ -29,13 +30,15 @@ export interface PlantMessage {
 /** Messages kept per photo; each answer costs money, so a thread ends. */
 export const THREAD_LIMIT = 20;
 export const COUNTS = [1, 2, 4] as const;
-// Nano Banana 2.1 at 2K, from Vertex AI's price list.
+// Nano Banana 2.1 at 2K, from Vertex AI's price list, until the API says
+// what the picked model costs.
 const PRICE_PER_IMAGE = 0.05;
 
 /** The image a thread has settled on, if any. */
 export function pickedImage(thread: PlantMessage[]): string | null {
   for (const message of [...thread].reverse()) {
-    if (message.picked !== undefined) return message.images?.[message.picked] ?? null;
+    if (message.picked !== undefined)
+      return message.images?.[message.picked] ?? null;
   }
   return null;
 }
@@ -56,7 +59,11 @@ export function Compare({
   return (
     <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl border border-ink bg-[#14140f]">
       {before ? (
-        <img src={before} alt={`${label} as it is`} className="absolute inset-0 size-full object-cover" />
+        <img
+          src={before}
+          alt={`${label} as it is`}
+          className="absolute inset-0 size-full object-cover"
+        />
       ) : (
         <div className="absolute inset-0 grid place-items-center text-xs text-white/60">
           Cutting the view out of your panorama…
@@ -137,6 +144,10 @@ export function ImageChat({
   onPick: (message: string, index: number) => void;
   resultsPath: string;
 }) {
+  const choice = useModelChoice();
+  const { catalog } = useModelCatalog();
+  const imageModel = catalog ? effectiveModels(choice, catalog).image : null;
+  const price = imageModel?.pricePerImage ?? PRICE_PER_IMAGE;
   const [draft, setDraft] = useState("");
   const list = useRef<HTMLOListElement>(null);
   const started = thread.length > 0;
@@ -148,7 +159,10 @@ export function ImageChat({
   }, [active.id, active.prompt, started]);
 
   useEffect(() => {
-    list.current?.scrollTo({ top: list.current.scrollHeight, behavior: "smooth" });
+    list.current?.scrollTo({
+      top: list.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [thread.length, busy]);
 
   const picked = pickedImage(thread);
@@ -165,7 +179,11 @@ export function ImageChat({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       {views.length > 1 && (
-        <div role="tablist" aria-label="Photos" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]">
+        <div
+          role="tablist"
+          aria-label="Photos"
+          className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]"
+        >
           {views.map((view) => (
             <button
               key={view.id}
@@ -175,7 +193,9 @@ export function ImageChat({
               onClick={() => onActive(view.id)}
               className={cn(
                 "relative shrink-0 rounded-full px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
-                view.id === active.id ? "text-[#14140f]" : "text-muted-foreground hover:text-foreground",
+                view.id === active.id
+                  ? "text-[#14140f]"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {view.id === active.id && (
@@ -194,12 +214,16 @@ export function ImageChat({
       <Compare before={original} after={after} label={active.label} />
       {originalProblem && (
         <p className="flex items-start gap-1.5 text-xs text-destructive">
-          <CircleAlertIcon className="mt-px size-3.5 shrink-0" /> {originalProblem}
+          <CircleAlertIcon className="mt-px size-3.5 shrink-0" />{" "}
+          {originalProblem}
         </p>
       )}
       {after && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>Drag across the photo to compare. Every drawing carries Google&apos;s SynthID watermark.</span>
+          <span>
+            Drag across the photo to compare. Every drawing carries
+            Google&apos;s SynthID watermark.
+          </span>
           <a
             href={after}
             download={`${active.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-redesign.jpg`}
@@ -210,7 +234,11 @@ export function ImageChat({
         </div>
       )}
 
-      <ol ref={list} aria-live="polite" className="flex min-h-40 flex-1 flex-col gap-2.5 overflow-y-auto px-0.5">
+      <ol
+        ref={list}
+        aria-live="polite"
+        className="flex min-h-40 flex-1 flex-col gap-2.5 overflow-y-auto px-0.5"
+      >
         {!started && (
           <li className="rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
             <ImageIcon className="mr-1.5 inline size-4 align-[-3px]" />
@@ -220,7 +248,10 @@ export function ImageChat({
         )}
         {thread.map((message) =>
           message.role === "user" ? (
-            <li key={message.id} className="max-w-[88%] self-end rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-sm text-[#14140f]">
+            <li
+              key={message.id}
+              className="max-w-[88%] self-end rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-sm text-[#14140f]"
+            >
               {message.text}
             </li>
           ) : (
@@ -228,7 +259,9 @@ export function ImageChat({
               key={message.id}
               className={cn(
                 "flex w-full flex-col gap-2 self-start rounded-2xl rounded-bl-md px-3 py-2.5 text-sm",
-                message.failed ? "border border-destructive/40 bg-destructive/5 text-destructive" : "bg-muted",
+                message.failed
+                  ? "border border-destructive/40 bg-destructive/5 text-destructive"
+                  : "bg-muted",
               )}
             >
               {message.outside && (
@@ -236,7 +269,10 @@ export function ImageChat({
                   <TriangleAlertIcon className="mt-px size-3.5 shrink-0 text-warning" />
                   <span>
                     <strong>Not in your redesign.</strong> {message.outside}{" "}
-                    <Link to={resultsPath} className="underline underline-offset-2">
+                    <Link
+                      to={resultsPath}
+                      className="underline underline-offset-2"
+                    >
                       Measure it in Results
                     </Link>{" "}
                     before you plan on it.
@@ -244,7 +280,12 @@ export function ImageChat({
                 </p>
               )}
               {(message.images?.length ?? 0) > 0 && (
-                <div className={cn("grid gap-2", message.images!.length > 1 && "grid-cols-2")}>
+                <div
+                  className={cn(
+                    "grid gap-2",
+                    message.images!.length > 1 && "grid-cols-2",
+                  )}
+                >
                   {message.images!.map((id, index) => {
                     const src = id ? images[id] : undefined;
                     const chosen = message.picked === index;
@@ -257,10 +298,18 @@ export function ImageChat({
                         aria-label={`Use drawing ${index + 1}`}
                         className={cn(
                           "relative aspect-[16/9] overflow-hidden rounded-xl border-2 bg-[#14140f] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
-                          chosen ? "border-ink shadow-hard-sm" : "border-transparent opacity-80 hover:opacity-100",
+                          chosen
+                            ? "border-ink shadow-hard-sm"
+                            : "border-transparent opacity-80 hover:opacity-100",
                         )}
                       >
-                        {src && <img src={src} alt="" className="size-full object-cover" />}
+                        {src && (
+                          <img
+                            src={src}
+                            alt=""
+                            className="size-full object-cover"
+                          />
+                        )}
                         {chosen && (
                           <span className="absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-full border border-ink bg-primary text-[#14140f]">
                             <CheckIcon className="size-3" strokeWidth={3} />
@@ -268,7 +317,10 @@ export function ImageChat({
                         )}
                       </button>
                     ) : (
-                      <div key={`failed-${index}`} className="grid aspect-[16/9] place-items-center rounded-xl border border-dashed border-border text-xs text-muted-foreground">
+                      <div
+                        key={`failed-${index}`}
+                        className="grid aspect-[16/9] place-items-center rounded-xl border border-dashed border-border text-xs text-muted-foreground"
+                      >
                         No drawing
                       </div>
                     );
@@ -277,7 +329,9 @@ export function ImageChat({
               )}
               {message.text && (
                 <span>
-                  {message.failed && <CircleAlertIcon className="mr-1.5 inline size-3.5 align-[-2px]" />}
+                  {message.failed && (
+                    <CircleAlertIcon className="mr-1.5 inline size-3.5 align-[-2px]" />
+                  )}
                   {message.text}
                 </span>
               )}
@@ -321,7 +375,11 @@ export function ImageChat({
           disabled={full || !original}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
               event.preventDefault();
               submit();
             }
@@ -338,7 +396,11 @@ export function ImageChat({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span id="plant-count-label">Drawings</span>
-            <div role="radiogroup" aria-labelledby="plant-count-label" className="flex rounded-full bg-muted p-0.5">
+            <div
+              role="radiogroup"
+              aria-labelledby="plant-count-label"
+              className="flex rounded-full bg-muted p-0.5"
+            >
               {COUNTS.map((option) => (
                 <button
                   key={option}
@@ -348,15 +410,19 @@ export function ImageChat({
                   onClick={() => onCount(option)}
                   className={cn(
                     "rounded-full px-2 py-0.5 font-mono font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
-                    count === option ? "bg-card text-foreground shadow-sm" : "hover:text-foreground",
+                    count === option
+                      ? "bg-card text-foreground shadow-sm"
+                      : "hover:text-foreground",
                   )}
                 >
                   {option}
                 </button>
               ))}
             </div>
-            <span title="Nano Banana 2.1 at 2K on Vertex AI">
-              ≈ ${(count * PRICE_PER_IMAGE).toFixed(2)}
+            <span
+              title={`${imageModel?.label ?? "Nano Banana 2.1"} on Vertex AI`}
+            >
+              ≈ ${(count * price).toFixed(2)}
             </span>
           </div>
           <motion.button

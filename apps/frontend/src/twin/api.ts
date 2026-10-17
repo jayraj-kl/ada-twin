@@ -3,12 +3,20 @@ import type {
   FactoryGraph,
   GraphDiff,
   Kpis,
+  Playbook,
   Scenario,
   SimEvent,
 } from "@repo/sim";
+import { API, modelHeaders } from "@/lib/models";
 import type { DecisionRecord } from "./project";
 
-const API = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+/** A request to the API, with the models picked in this browser. */
+function apiFetch(path: string, init: RequestInit = {}) {
+  return fetch(`${API}${path}`, {
+    ...init,
+    headers: { ...modelHeaders(), ...(init.headers as Record<string, string>) },
+  });
+}
 
 // These mirror the shapes the API's /twin routes send and accept.
 export interface Machine {
@@ -57,7 +65,7 @@ export async function locate(
   panoramaUrl: string,
   machines: Machine[],
 ): Promise<Placement[]> {
-  const response = await fetch(`${API}/twin/locate`, {
+  const response = await apiFetch(`/twin/locate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ panoramaUrl, machines }),
@@ -80,7 +88,7 @@ export async function draftFlow(
   machines: Machine[],
   description: string,
 ): Promise<FlowDraft> {
-  const response = await fetch(`${API}/twin/flow`, {
+  const response = await apiFetch(`/twin/flow`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ panoramaUrl, machines, description }),
@@ -106,7 +114,7 @@ export async function reviseFlow(
   },
   messages: { role: "user" | "assistant"; text: string }[],
 ): Promise<FlowRevision> {
-  const response = await fetch(`${API}/twin/flow/revise`, {
+  const response = await apiFetch(`/twin/flow/revise`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -128,11 +136,15 @@ export type RunLine =
       maintenanceCrews: number;
       adjustments: Adjustment[];
       baseline: Kpis;
+      /** Standard rules on each day averaged; the first is `baseline`. */
+      days: Kpis[];
     }
   | { type: "decision"; record: DecisionRecord }
   /** What happened on the floor since the last line, while it runs. */
   | { type: "events"; events: SimEvent[] }
   | { type: "done"; kpis: Kpis; events: SimEvent[] }
+  /** After `done`, with agents: their way of working as fixed rules. */
+  | { type: "playbook"; playbook: Playbook | null; problem?: string }
   | { type: "error"; message: string };
 
 /**
@@ -144,7 +156,7 @@ export async function streamRun(
   onLine: (line: RunLine) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(`${API}/run`, {
+  const response = await apiFetch(`/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -178,7 +190,7 @@ export async function findParameters(
   form.set("machine", JSON.stringify(machine));
   for (const document of documents) form.append("documents", document);
   return unwrap(
-    await fetch(`${API}/twin/parameters`, { method: "POST", body: form }),
+    await apiFetch(`/twin/parameters`, { method: "POST", body: form }),
   );
 }
 
@@ -204,7 +216,7 @@ export async function estimateCosts(
   changes: { id: string; title: string; detail: string; machine?: Machine }[],
   currency: string,
 ): Promise<CostEstimate[]> {
-  const response = await fetch(`${API}/twin/costs`, {
+  const response = await apiFetch(`/twin/costs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ changes, currency }),
@@ -228,10 +240,60 @@ export async function designChanges(
   scenario: Scenario,
   messages: { role: "user" | "assistant"; text: string }[],
 ): Promise<{ reply: string; changes: DesignedChange[] }> {
-  const response = await fetch(`${API}/run/redesign`, {
+  const response = await apiFetch(`/run/redesign`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ graph, kpis, scenario, messages }),
+  });
+  return unwrap(response);
+}
+
+/** How one station or support spent the shift, as shares of its time. */
+export interface DigestLine {
+  id: string;
+  working?: number;
+  blocked?: number;
+  /** Up with nothing to do: starved of parts. */
+  idle?: number;
+  down?: number;
+  /** Stopped by support equipment it needs. */
+  stopped?: number;
+  failures?: number;
+}
+
+/** A run boiled down to what the equipment scout reads. */
+export interface RunDigest {
+  shipped: number;
+  range?: { min: number; max: number };
+  days: number;
+  bottleneck?: string;
+  stations: DigestLine[];
+  supports: DigestLine[];
+  decisions?: { total: number; fallbacks: number };
+}
+
+export type ScoutKind = "new-station" | "new-support" | "spares";
+
+/** New equipment, or spares on the shelf, that the run says would help. */
+export interface ScoutedChange extends DesignedChange {
+  kind: ScoutKind;
+  /** The problem it answers, with the run's numbers. */
+  problem: string;
+  sources: { url: string; title?: string }[];
+}
+
+/** Asks the AI what equipment the plant is missing, from a run. */
+export async function scoutEquipment(body: {
+  graph: FactoryGraph;
+  digest: RunDigest;
+  scenario: Scenario;
+  /** Titles already suggested or kept, not to repeat. */
+  known: string[];
+}): Promise<{ suggestions: ScoutedChange[]; dropped: string[] }> {
+  const response = await apiFetch(`/run/scout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
   return unwrap(response);
 }
@@ -252,7 +314,7 @@ export async function explainChanges(body: {
     cost?: string;
   }[];
 }): Promise<{ summary: string; paragraphs: Record<string, string> }> {
-  const response = await fetch(`${API}/plant/explain`, {
+  const response = await apiFetch(`/plant/explain`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -284,10 +346,51 @@ export async function illustrate(body: {
   check: { outside: boolean; note: string } | null;
   results: Illustration[];
 }> {
-  const response = await fetch(`${API}/plant/illustrate`, {
+  const response = await apiFetch(`/plant/illustrate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+  return unwrap(response);
+}
+
+/** A scenario setting the scenario assistant can change. */
+export type ScenarioField =
+  | "name"
+  | "shiftHours"
+  | "demandPerShift"
+  | "ambientTempC"
+  | "supplyDisruption"
+  | "absenteeism"
+  | "maintenanceCrews"
+  | "targets.throughputPerShift"
+  | "targets.maxAverageWip"
+  | "targets.maxDownShare";
+
+/** What the scenario assistant made of a description; nothing is applied yet. */
+export interface ScenarioAnswer {
+  reply: string;
+  changes: {
+    field: ScenarioField;
+    /** Null unsets the setting. */
+    value: number | string | null;
+    reason: string;
+  }[];
+  /** A new crew briefing, or null to keep the current one. */
+  briefing: string | null;
+  /** What was described that the simulation cannot model yet. */
+  notModelled: string[];
+}
+
+export async function describeScenario(
+  scenario: Scenario,
+  machines: { id: string; name: string }[],
+  messages: { role: "user" | "assistant"; text: string }[],
+): Promise<ScenarioAnswer> {
+  const response = await apiFetch(`/twin/scenario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenario, machines, messages }),
   });
   return unwrap(response);
 }

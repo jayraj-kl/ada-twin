@@ -4,6 +4,7 @@ import {
   type FactoryNode,
   type Kpis,
   type Param,
+  type Playbook,
   type Scenario,
   type SimEvent,
   param,
@@ -29,6 +30,11 @@ export const DESIGN_CHAT_KEY = "twin-design-chat";
 export const APPLIED_KEY = "twin-applied";
 /** The photo conversations of the last step, by applied redesign and view. */
 export const PLANT_CHAT_KEY = "twin-plant-chat";
+/** How many days every average on the results and plant steps is taken over. */
+export const DAYS_KEY = "twin-days";
+export const DEFAULT_DAYS = 10;
+// The most the API averages standard rules over.
+export const MAX_DAYS = 60;
 
 // Written by `pnpm --filter @repo/scripts fetch-world <worldId>`.
 export const WORLD_DIR = "/worlds/current";
@@ -54,6 +60,8 @@ export interface SavedMachine {
   color?: string;
   /** For auxiliary equipment: standby units among `count`. */
   spares?: number;
+  /** New equipment an applied redesign added, still to be pinned. */
+  added?: "redesign";
 }
 
 // `shown` is the unit the user edits in, and how many stored units make one.
@@ -264,11 +272,25 @@ export interface StoredRun {
   graph: FactoryGraph;
   agents: AgentSpec[];
   adjustments: Adjustment[];
+  /** Standard rules on the run's own seed, the day the agents worked. */
   baseline: Kpis;
+  /**
+   * Standard rules on each day averaged, from the run's seed on; the first is
+   * `baseline`. Missing from runs made before days were averaged.
+   */
+  days?: Kpis[];
   kpis: Kpis;
   events: SimEvent[];
   decisions: DecisionRecord[];
+  /**
+   * The crew's way of working as fixed rules, written after the shift; null if
+   * it could not be written, missing with no agents or while it is written.
+   */
+  playbook?: Playbook | null;
 }
+
+/** The standard-rules days of a run; just its own seed for older runs. */
+export const daysOf = (run: StoredRun) => run.days ?? [run.baseline];
 
 /**
  * A value kept in this browser's storage. `loaded` turns true once the saved

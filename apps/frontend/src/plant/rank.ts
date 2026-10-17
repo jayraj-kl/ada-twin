@@ -10,8 +10,8 @@ import type { CostEstimate } from "@/twin/api";
 import type { SavedMachine, StoredRun } from "@/twin/project";
 import type { Change } from "@/twin/recommend";
 
-/** Days each measurement is averaged over, so one lucky day cannot decide. */
-export const DAYS = 5;
+/** Days a redesign applied before the days setting existed is averaged over. */
+const OLD_DAYS = 5;
 /** At most this many applied redesigns are kept. */
 export const KEPT_APPLIED = 10;
 
@@ -51,7 +51,10 @@ export interface AppliedRedesign {
   at: number;
   changes: Change[];
   /** The run the redesign was measured against, on the twin before it. */
-  run: Pick<StoredRun, "seed" | "tickMinutes" | "scenario" | "graph" | "baseline">;
+  run: Pick<StoredRun, "seed" | "tickMinutes" | "scenario" | "graph" | "baseline"> & {
+    /** Days every measurement is averaged over, as the run was. */
+    days?: number;
+  };
   /** The machines before the change, with their pins in the world. */
   machines: Pick<SavedMachine, "id" | "name" | "pins" | "count" | "auxiliary" | "spares">[];
   costs: Record<string, CostEstimate>;
@@ -62,7 +65,10 @@ export interface AppliedRedesign {
 
 type Measured = Pick<Change, "diffs" | "extraCrews">;
 
-/** `measure`, averaged over `DAYS` days starting at the run's seed. */
+/** Days each measurement of `run` is averaged over, so one lucky day cannot decide. */
+export const daysFor = (run: AppliedRedesign["run"]) => run.days ?? OLD_DAYS;
+
+/** `measure`, averaged over the run's days starting at its seed. */
 export async function measureDays(
   run: AppliedRedesign["run"],
   changes: Measured[],
@@ -82,7 +88,7 @@ export async function measureDays(
         changes.reduce((sum, { extraCrews }) => sum + extraCrews, 0),
       tickInterval: run.tickMinutes * 60,
     },
-    DAYS,
+    daysFor(run),
   );
   return averageKpis(days);
 }

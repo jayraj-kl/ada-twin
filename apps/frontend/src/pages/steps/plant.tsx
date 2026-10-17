@@ -21,7 +21,7 @@ import {
 import { imageKey, loadImage, saveImage } from "@/plant/images";
 import {
   type AppliedRedesign,
-  DAYS,
+  daysFor,
   type PlantReport,
   TIER_LABEL,
   type Tier,
@@ -29,11 +29,8 @@ import {
 } from "@/plant/rank";
 import { type PlantView, cutView, dataUrl, viewsFor } from "@/plant/views";
 import { moneyRange, perPart, signed } from "@/results/format";
-import {
-  type InlineImage,
-  explainChanges,
-  illustrate,
-} from "@/twin/api";
+import { originLabel } from "@/results/tabs";
+import { type InlineImage, explainChanges, illustrate } from "@/twin/api";
 import {
   APPLIED_KEY,
   PLANT_CHAT_KEY,
@@ -89,13 +86,19 @@ export default function PlantPage() {
     if (!record || record.report) return;
     let cancelled = false;
     setRankProblem("");
-    rankChanges(record, (done, total) => !cancelled && setProgress([done, total]))
+    rankChanges(
+      record,
+      (done, total) => !cancelled && setProgress([done, total]),
+    )
       .then((report) => {
-        if (!cancelled) update(record.id, (current) => ({ ...current, report }));
+        if (!cancelled)
+          update(record.id, (current) => ({ ...current, report }));
       })
       .catch((error: unknown) => {
         if (!cancelled)
-          setRankProblem(error instanceof Error ? error.message : String(error));
+          setRankProblem(
+            error instanceof Error ? error.message : String(error),
+          );
       })
       .finally(() => !cancelled && setProgress(null));
     return () => {
@@ -143,11 +146,17 @@ export default function PlantPage() {
         .then(({ summary, paragraphs }) =>
           update(target.id, (current) => ({
             ...current,
-            report: current.report && { ...current.report, summary, paragraphs },
+            report: current.report && {
+              ...current.report,
+              summary,
+              paragraphs,
+            },
           })),
         )
         .catch((error: unknown) =>
-          setWriteProblem(error instanceof Error ? error.message : String(error)),
+          setWriteProblem(
+            error instanceof Error ? error.message : String(error),
+          ),
         )
         .finally(() => setWriting(false));
     },
@@ -194,7 +203,9 @@ export default function PlantPage() {
       ...current,
       [recordId]: {
         ...current[recordId],
-        [viewId]: change(current[recordId]?.[viewId] ?? []).slice(-THREAD_LIMIT),
+        [viewId]: change(current[recordId]?.[viewId] ?? []).slice(
+          -THREAD_LIMIT,
+        ),
       },
     }));
 
@@ -241,11 +252,14 @@ export default function PlantPage() {
     let cancelled = false;
     Promise.all(
       missing.map(async (id) => {
-        const stored = await loadImage(imageKey(projectId, id)).catch(() => undefined);
+        const stored = await loadImage(imageKey(projectId, id)).catch(
+          () => undefined,
+        );
         return [id, stored ? dataUrl(stored) : ""] as const;
       }),
     ).then((loaded) => {
-      if (!cancelled) setImages((current) => ({ ...current, ...Object.fromEntries(loaded) }));
+      if (!cancelled)
+        setImages((current) => ({ ...current, ...Object.fromEntries(loaded) }));
     });
     return () => {
       cancelled = true;
@@ -279,7 +293,9 @@ export default function PlantPage() {
         subject: active.subject,
         changes: active.lines,
         previous,
-        notes: thread.filter(({ role }) => role === "user").map(({ text }) => text),
+        notes: thread
+          .filter(({ role }) => role === "user")
+          .map(({ text }) => text),
         message: text,
         count,
       });
@@ -291,7 +307,10 @@ export default function PlantPage() {
             ...result.image,
             turn: result.turn,
           });
-          setImages((current) => ({ ...current, [id]: dataUrl(result.image!) }));
+          setImages((current) => ({
+            ...current,
+            [id]: dataUrl(result.image!),
+          }));
           return id;
         }),
       );
@@ -309,7 +328,9 @@ export default function PlantPage() {
           role: "assistant",
           text:
             first === -1
-              ? (words ?? errors[0] ?? "Nano Banana made no drawing. Try saying it differently.")
+              ? (words ??
+                errors[0] ??
+                "Nano Banana made no drawing. Try saying it differently.")
               : (words ?? ""),
           images: ids,
           ...(first === -1 ? { failed: true } : { picked: first }),
@@ -348,8 +369,9 @@ export default function PlantPage() {
         <p className={cn(ui.eyebrow, "mx-auto")}>Step 6 · New plant</p>
         <h1 className={ui.title}>Nothing applied yet</h1>
         <p className="mb-6 text-muted-foreground">
-          Redesign the plant in Results, then press <strong>Apply to my twin</strong>.
-          The applied changes are ranked here, and drawn into your photos.
+          Redesign the plant in Results, then press{" "}
+          <strong>Apply to my twin</strong>. The applied changes are ranked
+          here, and drawn into your photos.
         </p>
         <Link to={path("results")} className={ui.primary}>
           <ArrowLeftIcon /> Go to Results
@@ -359,8 +381,10 @@ export default function PlantPage() {
   }
 
   const report = record.report;
-  const changeOf = (id: string) => record.changes.find((change) => change.id === id)!;
-  const viewOf = (id: string) => views.find(({ changeIds }) => changeIds.includes(id));
+  const changeOf = (id: string) =>
+    record.changes.find((change) => change.id === id)!;
+  const viewOf = (id: string) =>
+    views.find(({ changeIds }) => changeIds.includes(id));
   const gallery = views.flatMap((view) => {
     const id = pickedImage(threadOf(view));
     return id && images[id] ? [{ view, src: images[id] }] : [];
@@ -374,9 +398,11 @@ export default function PlantPage() {
           <h1 className={ui.title}>What the redesign changes</h1>
           <p className={cn(ui.lede, "mb-6")}>
             The changes you applied, most critical first for{" "}
-            <strong className="text-foreground">{record.run.scenario.name}</strong>,
-            each measured over {DAYS} simulated days. On the right, Nano Banana
-            draws them into photos of your plant.
+            <strong className="text-foreground">
+              {record.run.scenario.name}
+            </strong>
+            , each measured over {daysFor(record.run)} simulated days. On the
+            right, Nano Banana draws them into photos of your plant.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -393,13 +419,17 @@ export default function PlantPage() {
               >
                 {[...applied].reverse().map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
-                    Applied {when(candidate.at)} · {candidate.changes.length} changes
+                    Applied {when(candidate.at)} · {candidate.changes.length}{" "}
+                    changes
                   </option>
                 ))}
               </select>
             </>
           )}
-          <button className={cn(ui.button, "h-9")} onClick={() => window.print()}>
+          <button
+            className={cn(ui.button, "h-9")}
+            onClick={() => window.print()}
+          >
             <PrinterIcon /> Print
           </button>
           <Link to={path("results")} className={cn(ui.button, "h-9")}>
@@ -414,17 +444,24 @@ export default function PlantPage() {
           {!report ? (
             <div className={ui.panel}>
               <p className="text-sm font-semibold">
-                {rankProblem ? "The changes could not be measured" : "Measuring each change…"}
+                {rankProblem
+                  ? "The changes could not be measured"
+                  : "Measuring each change…"}
               </p>
               {rankProblem ? (
                 <p className="mt-1 text-sm text-destructive">{rankProblem}</p>
               ) : (
                 <>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    The shift runs {DAYS} days with and without each change, on standard rules.
+                    The shift runs {daysFor(record.run)} days with and without
+                    each change, on standard rules.
                   </p>
                   <div className={cn(ui.timeline, "mt-3")}>
-                    <div style={{ width: `${progress ? (progress[0] / progress[1]) * 100 : 4}%` }} />
+                    <div
+                      style={{
+                        width: `${progress ? (progress[0] / progress[1]) * 100 : 4}%`,
+                      }}
+                    />
                   </div>
                 </>
               )}
@@ -439,19 +476,36 @@ export default function PlantPage() {
                 <div className={cn(ui.kpi, "border-ink")}>
                   <div className={ui.kpiLabel}>With the redesign</div>
                   <div className={ui.kpiValue}>{Math.round(report.after)}</div>
-                  <div className={cn(ui.delta, report.after >= report.before ? ui.good : ui.poor)}>
-                    {signed(report.after - report.before, 1)} a shift, {DAYS}-day average
+                  <div
+                    className={cn(
+                      ui.delta,
+                      report.after >= report.before ? ui.good : ui.poor,
+                    )}
+                  >
+                    {signed(report.after - report.before, 1)} a shift,{" "}
+                    {daysFor(record.run)}-day average
                   </div>
                 </div>
                 {report.targets.length > 0 && (
                   <div className={cn(ui.kpi, "col-span-2")}>
-                    <div className={ui.kpiLabel}>Scenario targets, before → with the redesign</div>
+                    <div className={ui.kpiLabel}>
+                      Scenario targets, before → with the redesign
+                    </div>
                     <ul className="mt-2 flex flex-wrap gap-1.5 text-xs">
                       {report.targets.map((target) => (
-                        <li key={target.name} className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1">
+                        <li
+                          key={target.name}
+                          className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1"
+                        >
                           {target.name}
-                          <span className={cn("font-mono font-semibold", target.after ? ui.good : ui.poor)}>
-                            {target.before ? "met" : "missed"} → {target.after ? "met" : "missed"}
+                          <span
+                            className={cn(
+                              "font-mono font-semibold",
+                              target.after ? ui.good : ui.poor,
+                            )}
+                          >
+                            {target.before ? "met" : "missed"} →{" "}
+                            {target.after ? "met" : "missed"}
                           </span>
                         </li>
                       ))}
@@ -476,17 +530,25 @@ export default function PlantPage() {
                   )}
                 </div>
                 {writing ? (
-                  <p className="text-sm text-muted-foreground">Gemini is writing the report…</p>
+                  <p className="text-sm text-muted-foreground">
+                    Gemini is writing the report…
+                  </p>
                 ) : writeProblem ? (
                   <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                     <TriangleAlertIcon className="size-4 text-warning" />
-                    The summary could not be written ({writeProblem}). The ranking below stands on its own.
-                    <button className={cn(ui.button, "h-8")} onClick={() => write(record, report)}>
+                    The summary could not be written ({writeProblem}). The
+                    ranking below stands on its own.
+                    <button
+                      className={cn(ui.button, "h-8")}
+                      onClick={() => write(record, report)}
+                    >
                       Write the summary
                     </button>
                   </p>
                 ) : (
-                  <p className="text-sm">{report.summary || "No summary yet."}</p>
+                  <p className="text-sm">
+                    {report.summary || "No summary yet."}
+                  </p>
                 )}
               </div>
 
@@ -498,30 +560,47 @@ export default function PlantPage() {
                   const view = viewOf(row.id);
                   const together = row.solo < 1 && row.marginal >= 1;
                   return (
-                    <li key={row.id} className={cn(ui.panel, "break-inside-avoid")}>
+                    <li
+                      key={row.id}
+                      className={cn(ui.panel, "break-inside-avoid")}
+                    >
                       <div className="flex items-start gap-3">
                         <span className="grid size-8 shrink-0 place-items-center rounded-full border-2 border-ink font-mono text-sm font-semibold">
                           {index + 1}
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className={cn("rounded-full border px-2 py-px text-[11px] font-semibold tracking-wide uppercase", TIER_STYLE[row.tier])}>
+                            <span
+                              className={cn(
+                                "rounded-full border px-2 py-px text-[11px] font-semibold tracking-wide uppercase",
+                                TIER_STYLE[row.tier],
+                              )}
+                            >
                               {TIER_LABEL[row.tier]}
                             </span>
                             {change.origin && (
                               <span className={ui.tag}>
-                                {change.origin === "asked" ? "You asked" : "Suggested"}
+                                {originLabel(change)}
                               </span>
                             )}
-                            {together && <span className={ui.tag}>Only with the others</span>}
+                            {together && (
+                              <span className={ui.tag}>
+                                Only with the others
+                              </span>
+                            )}
                             {row.marginal <= -1 && (
-                              <span className={cn(ui.tag, ui.tagAssumed)}>Better without it</span>
+                              <span className={cn(ui.tag, ui.tagAssumed)}>
+                                Better without it
+                              </span>
                             )}
                           </div>
-                          <h2 className="mt-1.5 font-semibold">{change.title}</h2>
+                          <h2 className="mt-1.5 font-semibold">
+                            {change.title}
+                          </h2>
                           {row.needed.length > 0 && (
                             <p className="mt-0.5 text-xs font-semibold text-destructive">
-                              Without it the plant misses: {row.needed.join(", ")}
+                              Without it the plant misses:{" "}
+                              {row.needed.join(", ")}
                             </p>
                           )}
                           <p className="mt-1.5 text-sm text-muted-foreground">
@@ -529,12 +608,20 @@ export default function PlantPage() {
                           </p>
                           <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
                             <div>
-                              <dt className="text-muted-foreground">Without it</dt>
-                              <dd className="font-mono font-semibold">{signed(-row.marginal, 1)}/shift</dd>
+                              <dt className="text-muted-foreground">
+                                Without it
+                              </dt>
+                              <dd className="font-mono font-semibold">
+                                {signed(-row.marginal, 1)}/shift
+                              </dd>
                             </div>
                             <div>
-                              <dt className="text-muted-foreground">On its own</dt>
-                              <dd className="font-mono font-semibold">{signed(row.solo, 1)}/shift</dd>
+                              <dt className="text-muted-foreground">
+                                On its own
+                              </dt>
+                              <dd className="font-mono font-semibold">
+                                {signed(row.solo, 1)}/shift
+                              </dd>
                             </div>
                             <div>
                               <dt className="text-muted-foreground">Cost</dt>
@@ -542,7 +629,11 @@ export default function PlantPage() {
                                 {costText(row.id) ?? "not looked up"}
                                 {each !== null && (
                                   <span className="block font-normal text-muted-foreground">
-                                    {moneyRange({ low: each, high: each }, record.currency)} per part a shift
+                                    {moneyRange(
+                                      { low: each, high: each },
+                                      record.currency,
+                                    )}{" "}
+                                    per part a shift
                                   </span>
                                 )}
                               </dd>
@@ -559,7 +650,13 @@ export default function PlantPage() {
                               </button>
                             ) : (
                               <span className="text-muted-foreground">
-                                No photo: {unseen.find(({ change: other }) => other.id === row.id)?.reason.toLowerCase() ?? "nothing to see"}.
+                                No photo:{" "}
+                                {unseen
+                                  .find(
+                                    ({ change: other }) => other.id === row.id,
+                                  )
+                                  ?.reason.toLowerCase() ?? "nothing to see"}
+                                .
                               </span>
                             )}
                           </div>
@@ -571,8 +668,8 @@ export default function PlantPage() {
               </ol>
               <p className="text-xs text-muted-foreground">
                 "Without it" is what the redesign loses when only this change is
-                taken out, so changes that work together count. The parts don&apos;t
-                add up to the total when changes overlap.
+                taken out, so changes that work together count. The parts
+                don&apos;t add up to the total when changes overlap.
               </p>
             </>
           )}
@@ -586,8 +683,14 @@ export default function PlantPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {gallery.map(({ view, src }) => (
                   <figure key={view.id} className="flex flex-col gap-1">
-                    <img src={src} alt={`${view.label} as the AI drew it`} className="aspect-[16/9] w-full rounded-xl border border-border object-cover" />
-                    <figcaption className="text-xs text-muted-foreground">{view.label}</figcaption>
+                    <img
+                      src={src}
+                      alt={`${view.label} as the AI drew it`}
+                      className="aspect-[16/9] w-full rounded-xl border border-border object-cover"
+                    />
+                    <figcaption className="text-xs text-muted-foreground">
+                      {view.label}
+                    </figcaption>
                   </figure>
                 ))}
               </div>
@@ -602,7 +705,9 @@ export default function PlantPage() {
         >
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold">Your plant, redesigned</h2>
-            <span className={ui.hint}>Nano Banana · a visual aid, not a drawing to build from</span>
+            <span className={ui.hint}>
+              Nano Banana · a visual aid, not a drawing to build from
+            </span>
           </div>
           {active ? (
             <ImageChat

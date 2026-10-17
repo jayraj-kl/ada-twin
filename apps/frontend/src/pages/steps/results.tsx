@@ -1,4 +1,14 @@
-import { type Kpis, type Scenario, type SimEvent, applyDiffs } from "@repo/sim";
+import {
+  type Kpis,
+  type Scenario,
+  type SimEvent,
+  applyDiffs,
+  applyScenario,
+  defaultPolicy,
+  playbookPolicy,
+  simulate,
+  simulateDays,
+} from "@repo/sim";
 import {
   ArrowRightIcon,
   BoxesIcon,
@@ -32,11 +42,14 @@ import {
   flyersFor,
 } from "@/results/floor";
 import { costKey, signed } from "@/results/format";
+import { ShiftCharts } from "@/results/ShiftCharts";
 import { ChangesTab, type RedesignVersion, ResultsTab } from "@/results/tabs";
+import { type Series, timelineOf } from "@/results/timeline";
 import {
   type CostEstimate,
   designChanges,
   estimateCosts,
+  scoutEquipment,
   streamRun,
 } from "@/twin/api";
 import { EMPTY_FLOW, FLOW_KEY, type Flow, flowProblems } from "@/twin/flow";
@@ -47,12 +60,15 @@ import {
   CAMERA_HEIGHT_M,
   COSTS_KEY,
   type CrewSettings,
+  DAYS_KEY,
   DEFAULT_CREW,
+  DEFAULT_DAYS,
   DEFAULT_SCENARIO,
   DESIGN_CHAT_KEY,
   type DecisionRecord,
   HISTORY_KEY,
   MACHINES_KEY,
+  MAX_DAYS,
   ROLE_INFO,
   RUN_KEY,
   SCENARIO_KEY,
@@ -61,13 +77,18 @@ import {
   WORLD_DIR,
   buildGraph,
   clock,
+  daysOf,
   useStored,
 } from "@/twin/project";
 import {
   type Change,
+  type Measured,
   type MeasuredChange,
   applyToTwin,
+  baselineOf,
   costRequests,
+  digestOf,
+  gainOf,
   measure,
   measureChanges,
 } from "@/twin/recommend";
@@ -76,6 +97,18 @@ const NO_MACHINES: SavedMachine[] = [];
 const NO_CHANGES: Change[] = [];
 const NO_HISTORY: RedesignVersion[] = [];
 const NO_COSTS: Record<string, CostEstimate> = {};
+const SCOUTED_KEY = "twin-scouted";
+
+/** What the AI found for one run, kept so a reload does not pay again. */
+interface Scouted {
+  /** Which run it was found for. */
+  run: string;
+  changes: MeasuredChange[];
+  note: string;
+}
+
+const runId = (run: StoredRun) =>
+  `${run.seed}:${run.events.length}:${run.kpis.completed}:${run.decisions.length}`;
 // Simulated seconds played per real second; the second plays an eight-hour
 // shift in two minutes.
 const SPEEDS = [120, 240, 480, 960];
@@ -119,6 +152,13 @@ function pinNotes(changes: Change[], edges: Flow["links"]) {
       );
     } else if (diff.type === "insert-buffer") {
       add(diff.to, `${diff.name} (${diff.capacity}) before`);
+    } else if (diff.type === "insert-station") {
+      // New equipment has no pin yet; the machine after it carries the note.
+      add(diff.to, `new ${diff.name.toLowerCase()} before`);
+    } else if (diff.type === "add-support") {
+      for (const id of diff.neededBy) {
+        add(id, `needs new ${diff.name.toLowerCase()}`);
+      }
     } else if (diff.type === "resize-buffer") {
       // A buffer has no pin; the machine it feeds carries the note.
       const fed = edges.find(({ from }) => from === diff.buffer)?.to;
@@ -177,11 +217,20 @@ export default function ResultsPage() {
   const [costs, setCosts, costsLoaded] = useStored(COSTS_KEY, NO_COSTS);
   const [currency, setCurrency] = useStored("twin-cost-currency", "USD");
   const [applied] = useStored<AppliedRedesign[]>(APPLIED_KEY, []);
+  const [days, setDays] = useStored(DAYS_KEY, DEFAULT_DAYS);
+  const [scoutedFor, setScoutedFor] = useStored<Scouted | null>(
+    SCOUTED_KEY,
+    null,
+  );
+  const [scouting, setScouting] = useState(false);
+  const [scoutProblem, setScoutProblem] = useState("");
 
   const [view, setView] = useState<View>("baseline");
   const [tab, setTab] = useState<Tab>("results");
   const [sheet, setSheet] = useState(false);
   const [showDecisions, setShowDecisions] = useState(false);
+  // Phones have little room over the world, so the charts start folded.
+  const [chartsOpen, setChartsOpen] = useState(desktop);
 
   // --- the shift -------------------------------------------------------------
   const [seed, setSeed] = useState(1);
@@ -190,6 +239,8 @@ export default function ResultsPage() {
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(SPEEDS[1]!);
+  const [writingPlaybook, setWritingPlaybook] = useState(false);
+  const [playbookProblem, setPlaybookProblem] = useState("");
   const cancel = useRef<AbortController | null>(null);
 
   const graph = useMemo(() => buildGraph(machines, flow), [machines, flow]);
@@ -228,8 +279,10 @@ export default function ResultsPage() {
     cancel.current = controller;
     let started: Pick<
       StoredRun,
-      "horizon" | "maintenanceCrews" | "adjustments" | "baseline"
+      "horizon" | "maintenanceCrews" | "adjustments" | "baseline" | "days"
     > | null = null;
+    let finished: StoredRun | null = null;
+    setPlaybookProblem("");
     try {
       await streamRun(
         {
@@ -238,6 +291,7 @@ export default function ResultsPage() {
           agents: crew.agents,
           seed,
           tickMinutes: crew.tickMinutes,
+          days,
         },
         (line) => {
           if (line.type === "start") {
@@ -249,8 +303,14 @@ export default function ResultsPage() {
             state.events = [...state.events, ...line.events];
           } else if (line.type === "error") {
             throw new Error(line.message);
-          } else if (started) {
-            setRun({
+          } else if (line.type === "playbook") {
+            // Written after the shift, while its replay is already playing.
+            if (finished) setRun({ ...finished, playbook: line.playbook });
+            setPlaybookProblem(line.problem ?? "");
+            setWritingPlaybook(false);
+            return;
+          } else if (line.type === "done" && started) {
+            finished = {
               ...started,
               seed,
               tickMinutes: crew.tickMinutes,
@@ -260,7 +320,10 @@ export default function ResultsPage() {
               kpis: line.kpis,
               events: line.events,
               decisions: state.decisions,
-            });
+            };
+            setRun(finished);
+            setLive(null);
+            setWritingPlaybook(crew.agents.length > 0);
             setTime(0);
             setPlaying(true);
             return;
@@ -275,6 +338,7 @@ export default function ResultsPage() {
       }
     } finally {
       setLive(null);
+      setWritingPlaybook(false);
     }
   }
 
@@ -310,9 +374,72 @@ export default function ResultsPage() {
     [live, run, time],
   );
 
+  // --- the charts ------------------------------------------------------------
+  const liveEvents = live?.events;
+  const timeline = useMemo(
+    () => timelineOf(liveEvents ?? run?.events ?? []),
+    [liveEvents, run],
+  );
+  // What is charted: the shift being run, or the run being replayed.
+  const charted = live
+    ? {
+        graph,
+        scenario,
+        seed,
+        tickMinutes: crew.tickMinutes,
+        agents: crew.agents,
+      }
+    : run;
+  const chartedKey = charted
+    ? JSON.stringify([
+        charted.graph,
+        charted.scenario,
+        charted.seed,
+        charted.tickMinutes,
+      ])
+    : "";
+  const withAgents = (charted?.agents.length ?? 0) > 0;
+  // Every machine with a status, in the flow's order, pinned or not.
+  const chartedGraph = charted?.graph;
+  const lanes = useMemo(
+    () =>
+      (chartedGraph?.nodes ?? [])
+        .filter(({ kind }) => kind === "station" || kind === "support")
+        .map(({ id, name }) => ({ id, name, row: flow.positions[id]?.y ?? 0 }))
+        .sort((a, b) => a.row - b.row),
+    [chartedGraph, flow.positions],
+  );
+  // The same day on standard rules, for the dashed line. Without agents the
+  // run is that day already.
+  const [standard, setStandard] = useState<Series | null>(null);
+  useEffect(() => {
+    setStandard(null);
+    if (!charted || !withAgents) return;
+    let cancelled = false;
+    const plant = applyScenario(charted.graph, charted.scenario);
+    simulate(
+      plant.graph,
+      {
+        seed: charted.seed,
+        horizon: plant.horizon,
+        maintenanceCrews: plant.maintenanceCrews,
+        tickInterval: charted.tickMinutes * 60,
+      },
+      defaultPolicy,
+    ).then(
+      (result) => !cancelled && setStandard(timelineOf(result.events).shipped),
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+    // Keyed by what the day depends on, not by the objects holding it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartedKey, withAgents]);
+
   // --- the redesign ----------------------------------------------------------
   const [suggestions, setSuggestions] = useState<MeasuredChange[] | null>(null);
-  const [redesign, setRedesign] = useState<Kpis | null>(null);
+  const [redesign, setRedesign] = useState<Measured | null>(null);
   const [measuring, setMeasuring] = useState(false);
   const [designProblem, setDesignProblem] = useState("");
   const [alone, setAlone] = useState<Record<string, number | "failed">>({});
@@ -334,7 +461,7 @@ export default function ResultsPage() {
 
   // Each measurement is the same shift on standard rules, so a set of
   // changes always measures the same: keep the answers for this run.
-  const measured = useRef(new Map<string, Promise<Kpis>>());
+  const measured = useRef(new Map<string, Promise<Measured>>());
   useEffect(() => {
     measured.current = new Map();
   }, [run]);
@@ -344,15 +471,40 @@ export default function ResultsPage() {
       const key = JSON.stringify(
         changes.map(({ diffs, extraCrews }) => [diffs, extraCrews]),
       );
-      let kpis = measured.current.get(key);
-      if (!kpis) {
-        kpis = measure(run, changes);
-        measured.current.set(key, kpis);
+      let result = measured.current.get(key);
+      if (!result) {
+        result = measure(run, changes);
+        measured.current.set(key, result);
       }
-      return kpis;
+      return result;
     },
     [run],
   );
+  // The unchanged plant over the run's days, which every gain is paired with.
+  const before = useMemo(() => (run ? baselineOf(run) : null), [run]);
+
+  // The crew's playbook replayed on the run's days, beside standard rules.
+  const [crewDays, setCrewDays] = useState<Kpis[] | null>(null);
+  useEffect(() => {
+    setCrewDays(null);
+    if (!run?.playbook) return;
+    let cancelled = false;
+    const plant = applyScenario(run.graph, run.scenario);
+    simulateDays(
+      plant.graph,
+      {
+        seed: run.seed,
+        horizon: plant.horizon,
+        maintenanceCrews: plant.maintenanceCrews,
+        tickInterval: run.tickMinutes * 60,
+      },
+      daysOf(run).length,
+      playbookPolicy(run.playbook),
+    ).then((result) => !cancelled && setCrewDays(result));
+    return () => {
+      cancelled = true;
+    };
+  }, [run]);
 
   useEffect(() => {
     if (!run) return;
@@ -378,7 +530,7 @@ export default function ResultsPage() {
     setDesignProblem("");
     measureOnce(kept)
       .then(
-        (kpis) => !cancelled && setRedesign(kpis),
+        (result) => !cancelled && setRedesign(result),
         (error: unknown) => {
           if (cancelled) return;
           setRedesign(null);
@@ -395,15 +547,15 @@ export default function ResultsPage() {
 
   // What each kept change gains on its own.
   useEffect(() => {
-    if (!run) return;
+    if (!run || !before) return;
     let cancelled = false;
     for (const change of kept) {
       measureOnce([change]).then(
-        (kpis) =>
+        (result) =>
           !cancelled &&
           setAlone((current) => ({
             ...current,
-            [change.id]: kpis.completed - run.baseline.completed,
+            [change.id]: gainOf(before, result).mean,
           })),
         () =>
           !cancelled &&
@@ -413,7 +565,7 @@ export default function ResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [run, kept, measureOnce]);
+  }, [run, before, kept, measureOnce]);
 
   // What each change the assistant proposed would add to the redesign.
   const pending = useMemo(
@@ -424,17 +576,16 @@ export default function ResultsPage() {
     [chat],
   );
   useEffect(() => {
-    if (!run || pending.length === 0) return;
+    if (!run || !before || pending.length === 0) return;
     let cancelled = false;
-    const base =
-      kept.length > 0 ? measureOnce(kept) : Promise.resolve(run.baseline);
+    const base = kept.length > 0 ? measureOnce(kept) : Promise.resolve(before);
     for (const change of pending) {
       Promise.all([base, measureOnce([...kept, change])]).then(
-        ([before, after]) =>
+        ([from, to]) =>
           !cancelled &&
           setPreviews((current) => ({
             ...current,
-            [change.id]: after.completed - before.completed,
+            [change.id]: gainOf(from, to).mean,
           })),
         () =>
           !cancelled &&
@@ -444,7 +595,7 @@ export default function ResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [run, kept, pending, measureOnce]);
+  }, [run, before, kept, pending, measureOnce]);
 
   /** Saves the redesign as a new version. */
   function commit(next: Change[], label: string) {
@@ -510,9 +661,70 @@ export default function ResultsPage() {
   function addSuggestion(change: MeasuredChange) {
     if (kept.some(({ id }) => id === change.id)) return;
     commit(
-      [...kept, { ...change, origin: "suggested" }],
+      [...kept, { ...change, origin: change.origin ?? "suggested" }],
       `Added: ${change.title}`,
     );
+  }
+
+  /**
+   * Asks the AI what the plant is missing, then measures each idea on the
+   * run's days like any other change, keeping only those that help.
+   */
+  async function scout() {
+    if (!run || !before) return;
+    setScouting(true);
+    setScoutProblem("");
+    try {
+      const known = [
+        ...(suggestions ?? []).map(({ title }) => title),
+        ...kept.map(({ title }) => title),
+        ...(scouted ?? []).map(({ title }) => title),
+      ];
+      const found = await scoutEquipment({
+        graph: run.graph,
+        digest: digestOf(run),
+        scenario: run.scenario,
+        known,
+      });
+      const measuredFound = await Promise.all(
+        found.suggestions.map(async (change) => {
+          try {
+            const range = gainOf(before, await measureOnce([change]));
+            return {
+              ...change,
+              origin: "scouted" as const,
+              gain: range.mean,
+              range,
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const helping = measuredFound
+        .filter((change) => change !== null && change.gain > 0)
+        .map((change) => change!)
+        .sort((a, b) => b.gain - a.gain);
+      const unhelpful = found.suggestions.length - helping.length;
+      setScoutedFor({
+        run: runId(run),
+        changes: helping,
+        note:
+          found.suggestions.length === 0
+            ? "The AI found nothing missing that this run calls for."
+            : helping.length === 0
+              ? `The AI suggested ${found.suggestions.map(({ title }) => title.toLowerCase()).join(", ")}, but none helped when simulated.`
+              : unhelpful > 0
+                ? `${unhelpful} more ${unhelpful === 1 ? "idea" : "ideas"} did not help when simulated, so ${unhelpful === 1 ? "it is" : "they are"} left out.`
+                : "",
+      });
+    } catch (error) {
+      setScoutProblem(
+        `Could not look for new equipment: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      setScouting(false);
+    }
   }
 
   function dropKept(id: string) {
@@ -554,7 +766,7 @@ export default function ResultsPage() {
       );
       const answer = await designChanges(
         plant,
-        redesign ?? run.baseline,
+        (redesign ?? baselineOf(run)).average,
         run.scenario,
         conversation,
       );
@@ -599,6 +811,7 @@ export default function ResultsPage() {
           scenario: run.scenario,
           graph: run.graph,
           baseline: run.baseline,
+          days: daysOf(run).length,
         },
         machines: machines.map(
           ({ id, name, pins, count, auxiliary, spares }) => ({
@@ -744,9 +957,14 @@ export default function ResultsPage() {
         status === "down" || status === "repairing" || status === "stopped",
     )
     .map(([id]) => machines.find((machine) => machine.id === id)?.name ?? id);
-  const gain =
-    redesign && run ? redesign.completed - run.baseline.completed : null;
+  const gain = redesign && before ? gainOf(before, redesign).mean : null;
   const suggestionRows = suggestions?.map((change) => ({
+    ...change,
+    added: kept.some(({ id }) => id === change.id),
+  }));
+  const scouted =
+    run && scoutedFor?.run === runId(run) ? scoutedFor.changes : null;
+  const scoutedRows = scouted?.map((change) => ({
     ...change,
     added: kept.some(({ id }) => id === change.id),
   }));
@@ -820,10 +1038,20 @@ export default function ResultsPage() {
         run={run}
         redesign={redesign}
         measuring={measuring}
+        crewDays={crewDays}
+        writingPlaybook={writingPlaybook}
+        playbookProblem={playbookProblem}
         showRedesign={view === "redesign"}
         suggestions={suggestionRows ?? null}
         problem={designProblem}
         onAdd={addSuggestion}
+        scouted={scoutedRows ?? null}
+        scouting={scouting}
+        scoutNote={
+          scoutProblem ||
+          (run && scoutedFor?.run === runId(run) ? scoutedFor.note : "")
+        }
+        onScout={() => void scout()}
       />
     ) : (
       <ChangesTab
@@ -1004,190 +1232,234 @@ export default function ResultsPage() {
         {/* Bottom: the shift's clock, its decisions, and running it. */}
         <div
           className={cn(
-            "pointer-events-none absolute inset-x-0 flex flex-col items-start gap-2 p-3 sm:p-4",
+            "pointer-events-none absolute inset-x-0 flex flex-col gap-2 p-3 sm:p-4 xl:flex-row xl:items-end",
             desktop ? "bottom-0" : "bottom-[136px]",
           )}
         >
-          <AnimatePresence>
-            {showDecisions && (live || run) && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                transition={springs.snappy}
-                className="pointer-events-auto w-full max-w-[460px] rounded-2xl border border-white/15 bg-[#14140f]/85 p-3 text-white backdrop-blur-md"
-              >
-                <div className="mb-2 flex items-center justify-between text-xs font-semibold">
-                  Decisions · {decisions.length}
-                  <button
-                    type="button"
-                    onClick={() => setShowDecisions(false)}
-                    aria-label="Hide the decisions"
-                    className="grid size-6 place-items-center rounded-full text-white/70 outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-primary/50"
-                  >
-                    <ChevronDownIcon className="size-4" />
-                  </button>
-                </div>
-                {decisions.length === 0 ? (
-                  <p className="text-xs text-white/60">
-                    {agents.length === 0
-                      ? "There are no agents, so every role follows standard rules."
-                      : "Decisions appear here as the agents make them."}
-                  </p>
-                ) : (
-                  <ol className="flex max-h-[min(32svh,280px)] flex-col gap-2.5 overflow-y-auto pr-1">
-                    {decisions.map((record, index) => (
-                      <Decision
-                        key={`${record.time}-${record.agent.id}-${index}`}
-                        record={record}
-                      />
-                    ))}
-                  </ol>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="pointer-events-auto w-full max-w-[460px] rounded-2xl border border-white/15 bg-[#14140f]/85 p-3 text-white backdrop-blur-md">
-            {live ? (
-              <>
-                <div className="flex items-center justify-between gap-2">
-                  <strong className="font-mono text-sm">
-                    Simulating… {clock(liveTime)} / {clock(live.horizon)}
-                  </strong>
-                  <button
-                    className={darkPill}
-                    onClick={() => cancel.current?.abort()}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/15">
-                  <div
-                    className="h-full rounded-full bg-primary transition-[width] duration-500"
-                    style={{
-                      width: `${Math.min(100, (liveTime / live.horizon) * 100)}%`,
-                    }}
-                  />
-                </div>
-                <p className="mt-2 text-xs text-white/60">
-                  {agents.length > 0
-                    ? "The agents are deciding now; each decision is a question to Gemini. The replay starts when the shift is over."
-                    : "Simulating on standard rules."}
-                </p>
-              </>
-            ) : run ? (
-              <>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!playing && time >= horizon) setTime(0);
-                      setPlaying(!playing);
-                    }}
-                    aria-label={
-                      playing ? "Pause" : time >= horizon ? "Replay" : "Play"
-                    }
-                    className="grid size-8 shrink-0 place-items-center rounded-full border border-ink bg-primary text-[#14140f] outline-none focus-visible:ring-[3px] focus-visible:ring-primary/50"
-                  >
-                    {playing ? (
-                      <PauseIcon className="size-4" />
-                    ) : time >= horizon ? (
-                      <RotateCcwIcon className="size-4" />
-                    ) : (
-                      <PlayIcon className="size-4" />
-                    )}
-                  </button>
-                  <input
-                    type="range"
-                    aria-label="Time into the shift"
-                    className="min-w-0 flex-1 accent-[var(--primary)]"
-                    min={0}
-                    max={horizon}
-                    step={60}
-                    value={time}
-                    onChange={(event) => {
-                      setPlaying(false);
-                      setTime(Number(event.target.value));
-                    }}
-                  />
-                  <span className="shrink-0 font-mono text-xs">
-                    {clock(time)} / {clock(horizon)}
-                  </span>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <label htmlFor="speed" className="sr-only">
-                    Speed
-                  </label>
-                  <select
-                    id="speed"
-                    className="h-7 rounded-full border border-white/25 bg-transparent px-2 text-xs text-white outline-none [&>option]:text-black"
-                    value={speed}
-                    onChange={(event) => setSpeed(Number(event.target.value))}
-                  >
-                    {SPEEDS.map((option) => (
-                      <option key={option} value={option}>
-                        {Math.round(horizon / option / 60) || 1} min for the
-                        shift
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className={darkPill}
-                    onClick={() => setShowDecisions((open) => !open)}
-                  >
-                    <ListIcon className="mr-1 inline size-3.5 align-[-3px]" />
-                    Decisions · {run.decisions.length}
-                    {showDecisions ? (
-                      <ChevronDownIcon className="ml-0.5 inline size-3.5 align-[-3px]" />
-                    ) : (
-                      <ChevronUpIcon className="ml-0.5 inline size-3.5 align-[-3px]" />
-                    )}
-                  </button>
-                  <span className="ml-auto flex items-center gap-1.5 text-white/70">
-                    Seed
-                    <NumberField
-                      id="seed"
-                      size="sm"
-                      className="w-24 border-white/25 bg-transparent text-white"
-                      min={1}
-                      value={seed}
-                      onValueChange={(next) => setSeed(next || 1)}
-                    />
-                  </span>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <strong className="text-sm">Ready to run the shift</strong>
-                <p className="text-xs text-white/70">
-                  {crew.agents.length > 0
-                    ? `${crew.agents.length} agents run the floor. Each planning check-in and breakdown is a question to Gemini, so a run takes a few minutes.`
-                    : "No agents: the shift runs on standard rules in seconds."}
-                </p>
-              </div>
-            )}
-            {(stale || runProblem || (machinesLoaded && !ready)) && (
-              <p className="mt-2 flex items-start gap-1.5 text-xs text-[#ffd23f]">
-                <TriangleAlertIcon className="mt-px size-3.5 shrink-0" />
-                <span>
-                  {runProblem ? (
-                    `The run failed: ${runProblem}`
-                  ) : !ready ? (
-                    <>
-                      The twin cannot be simulated yet: finish its material flow
-                      in the{" "}
-                      <Link to={path("twin")} className="underline">
-                        twin step
-                      </Link>
-                      .
-                    </>
+          {(live || run) && !showRedesign && (
+            <div className="order-first w-full max-w-[460px] xl:order-last xl:ml-auto xl:max-w-[560px] xl:flex-1">
+              <ShiftCharts
+                timeline={timeline}
+                standard={standard}
+                target={
+                  (live ? scenario : run!.scenario).targets?.throughputPerShift
+                }
+                horizon={live ? live.horizon : horizon}
+                now={live ? liveTime : time}
+                complete={!live}
+                decisions={live ? live.decisions : run!.decisions}
+                stations={lanes}
+                onSeek={
+                  live
+                    ? undefined
+                    : (moment) => {
+                        setPlaying(false);
+                        setTime(moment);
+                      }
+                }
+                open={chartsOpen}
+                onToggle={() => setChartsOpen((open) => !open)}
+              />
+            </div>
+          )}
+          <div className="flex w-full max-w-[460px] flex-col items-start gap-2">
+            <AnimatePresence>
+              {showDecisions && (live || run) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={springs.snappy}
+                  className="pointer-events-auto w-full max-w-[460px] rounded-2xl border border-white/15 bg-[#14140f]/85 p-3 text-white backdrop-blur-md"
+                >
+                  <div className="mb-2 flex items-center justify-between text-xs font-semibold">
+                    Decisions · {decisions.length}
+                    <button
+                      type="button"
+                      onClick={() => setShowDecisions(false)}
+                      aria-label="Hide the decisions"
+                      className="grid size-6 place-items-center rounded-full text-white/70 outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-primary/50"
+                    >
+                      <ChevronDownIcon className="size-4" />
+                    </button>
+                  </div>
+                  {decisions.length === 0 ? (
+                    <p className="text-xs text-white/60">
+                      {agents.length === 0
+                        ? "There are no agents, so every role follows standard rules."
+                        : "Decisions appear here as the agents make them."}
+                    </p>
                   ) : (
-                    "Your twin has changed since this run. Run the shift again to see it with your agents."
+                    <ol className="flex max-h-[min(32svh,280px)] flex-col gap-2.5 overflow-y-auto pr-1">
+                      {decisions.map((record, index) => (
+                        <Decision
+                          key={`${record.time}-${record.agent.id}-${index}`}
+                          record={record}
+                        />
+                      ))}
+                    </ol>
                   )}
-                </span>
-              </p>
-            )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="pointer-events-auto w-full max-w-[460px] rounded-2xl border border-white/15 bg-[#14140f]/85 p-3 text-white backdrop-blur-md">
+              {live ? (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <strong className="font-mono text-sm">
+                      Simulating… {clock(liveTime)} / {clock(live.horizon)}
+                    </strong>
+                    <button
+                      className={darkPill}
+                      onClick={() => cancel.current?.abort()}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/15">
+                    <div
+                      className="h-full rounded-full bg-primary transition-[width] duration-500"
+                      style={{
+                        width: `${Math.min(100, (liveTime / live.horizon) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-white/60">
+                    {agents.length > 0
+                      ? "The agents are deciding now; each decision is a question to Gemini. The replay starts when the shift is over."
+                      : "Simulating on standard rules."}
+                  </p>
+                </>
+              ) : run ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!playing && time >= horizon) setTime(0);
+                        setPlaying(!playing);
+                      }}
+                      aria-label={
+                        playing ? "Pause" : time >= horizon ? "Replay" : "Play"
+                      }
+                      className="grid size-8 shrink-0 place-items-center rounded-full border border-ink bg-primary text-[#14140f] outline-none focus-visible:ring-[3px] focus-visible:ring-primary/50"
+                    >
+                      {playing ? (
+                        <PauseIcon className="size-4" />
+                      ) : time >= horizon ? (
+                        <RotateCcwIcon className="size-4" />
+                      ) : (
+                        <PlayIcon className="size-4" />
+                      )}
+                    </button>
+                    <input
+                      type="range"
+                      aria-label="Time into the shift"
+                      className="min-w-0 flex-1 accent-[var(--primary)]"
+                      min={0}
+                      max={horizon}
+                      step={60}
+                      value={time}
+                      onChange={(event) => {
+                        setPlaying(false);
+                        setTime(Number(event.target.value));
+                      }}
+                    />
+                    <span className="shrink-0 font-mono text-xs">
+                      {clock(time)} / {clock(horizon)}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <label htmlFor="speed" className="sr-only">
+                      Speed
+                    </label>
+                    <select
+                      id="speed"
+                      className="h-7 rounded-full border border-white/25 bg-transparent px-2 text-xs text-white outline-none [&>option]:text-black"
+                      value={speed}
+                      onChange={(event) => setSpeed(Number(event.target.value))}
+                    >
+                      {SPEEDS.map((option) => (
+                        <option key={option} value={option}>
+                          {Math.round(horizon / option / 60) || 1} min for the
+                          shift
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className={darkPill}
+                      onClick={() => setShowDecisions((open) => !open)}
+                    >
+                      <ListIcon className="mr-1 inline size-3.5 align-[-3px]" />
+                      Decisions · {run.decisions.length}
+                      {showDecisions ? (
+                        <ChevronDownIcon className="ml-0.5 inline size-3.5 align-[-3px]" />
+                      ) : (
+                        <ChevronUpIcon className="ml-0.5 inline size-3.5 align-[-3px]" />
+                      )}
+                    </button>
+                    <span className="ml-auto flex items-center gap-1.5 text-white/70">
+                      Seed
+                      <NumberField
+                        id="seed"
+                        size="sm"
+                        className="w-24 border-white/25 bg-transparent text-white"
+                        min={1}
+                        value={seed}
+                        onValueChange={(next) => setSeed(next || 1)}
+                      />
+                      <label
+                        htmlFor="days"
+                        className="ml-2"
+                        title="Every average is taken over this many days, each with its own random events. Takes effect on the next run."
+                      >
+                        Days
+                      </label>
+                      <NumberField
+                        id="days"
+                        size="sm"
+                        className="w-20 border-white/25 bg-transparent text-white"
+                        min={1}
+                        max={MAX_DAYS}
+                        value={days}
+                        onValueChange={(next) => setDays(next || DEFAULT_DAYS)}
+                      />
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <strong className="text-sm">Ready to run the shift</strong>
+                  <p className="text-xs text-white/70">
+                    {crew.agents.length > 0
+                      ? `${crew.agents.length} agents run the floor. Each planning check-in and breakdown is a question to Gemini, so a run takes a few minutes.`
+                      : "No agents: the shift runs on standard rules in seconds."}
+                  </p>
+                </div>
+              )}
+              {(stale || runProblem || (machinesLoaded && !ready)) && (
+                <p className="mt-2 flex items-start gap-1.5 text-xs text-[#ffd23f]">
+                  <TriangleAlertIcon className="mt-px size-3.5 shrink-0" />
+                  <span>
+                    {runProblem ? (
+                      `The run failed: ${runProblem}`
+                    ) : !ready ? (
+                      <>
+                        The twin cannot be simulated yet: finish its material
+                        flow in the{" "}
+                        <Link to={path("twin")} className="underline">
+                          twin step
+                        </Link>
+                        .
+                      </>
+                    ) : (
+                      "Your twin has changed since this run. Run the shift again to see it with your agents."
+                    )}
+                  </span>
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>

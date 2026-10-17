@@ -142,6 +142,22 @@ export function viewsFor(
           `Add a ${diff.name.toLowerCase()} holding about ${diff.capacity} parts between ${nameOf(diff.from)} and ${nameOf(diff.to)}, sized and styled to fit the plant.`,
         ];
       }
+      case "insert-station": {
+        const ends = [diff.from, diff.to].filter(pinned);
+        if (ends.length === 0) return "Neither machine beside it has a pin in the world";
+        return [
+          `link:${diff.from}:${diff.to}`,
+          `Add ${diff.units === 1 ? "a" : diff.units} new ${diff.name.toLowerCase()}${diff.units === 1 ? "" : "s"} between ${nameOf(diff.from)} and ${nameOf(diff.to)}: industrial equipment of that kind, at a realistic size, piped and wired in like its neighbours.`,
+        ];
+      }
+      case "add-support": {
+        const served = diff.neededBy.filter(pinned);
+        if (served.length === 0) return "Nothing it serves has a pin in the world";
+        return [
+          `node:${served[0]}`,
+          `Add a new ${diff.name.toLowerCase()} next to ${nameOf(served[0]!)}, connected to it: industrial equipment of that kind, at a realistic size.`,
+        ];
+      }
       case "resize-buffer": {
         const fed = graph.edges.find(({ from }) => from === diff.buffer)?.to;
         if (!fed || !pinned(fed)) return "The buffer has no machine with a pin next to it";
@@ -166,7 +182,7 @@ export function viewsFor(
       }
       const [key, prompt] = answer;
       shown = true;
-      if (diff.type === "insert-buffer") {
+      if (diff.type === "insert-buffer" || diff.type === "insert-station") {
         const ends = [diff.from, diff.to].filter(pinned);
         add(
           key,

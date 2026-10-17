@@ -1,16 +1,22 @@
-import type { FactoryNode, Kpis } from "@repo/sim";
+import {
+  type FactoryNode,
+  type Kpis,
+  type Playbook,
+  averageKpis,
+} from "@repo/sim";
 import {
   CheckIcon,
   HistoryIcon,
   PlusIcon,
   RotateCcwIcon,
+  TelescopeIcon,
   XIcon,
 } from "lucide-react";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
-import type { CostEstimate } from "@/twin/api";
-import { type StoredRun, percent } from "@/twin/project";
-import type { Change, MeasuredChange } from "@/twin/recommend";
+import type { CostEstimate, ScoutKind } from "@/twin/api";
+import { type StoredRun, daysOf, percent } from "@/twin/project";
+import type { Change, Measured, MeasuredChange } from "@/twin/recommend";
 import {
   CURRENCIES,
   costKey,
@@ -19,6 +25,7 @@ import {
   moneyRange,
   perPart,
   signed,
+  signedAverage,
 } from "./format";
 
 /** One saved state of the redesign. */
@@ -30,6 +37,104 @@ export interface RedesignVersion {
 
 const sectionTitle =
   "mb-2 flex items-baseline justify-between gap-2 text-sm font-semibold";
+
+export const KIND_LABEL: Record<ScoutKind, string> = {
+  "new-station": "New machine",
+  "new-support": "New support equipment",
+  spares: "Spare parts",
+};
+
+/** Where a change came from, as the chip on its card says it. */
+export const originLabel = (change: Change) =>
+  change.origin === "asked"
+    ? "You asked"
+    : change.origin === "scouted" && change.kind
+      ? KIND_LABEL[change.kind]
+      : "Suggested";
+
+/** One scouted change: the problem it answers, its gain, and its sources. */
+function ScoutedRow({
+  change,
+  onAdd,
+}: {
+  change: MeasuredChange & { added: boolean };
+  onAdd: (change: MeasuredChange) => void;
+}) {
+  return (
+    <li className="flex items-start gap-3 rounded-2xl border border-border p-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="rounded-full bg-primary/25 px-2 py-px text-[10px] font-semibold tracking-wide uppercase">
+            {originLabel(change)}
+          </span>
+          <span className="shrink-0 font-mono text-xs font-semibold text-success">
+            {signedAverage(change.gain)}/shift
+          </span>
+        </div>
+        <strong className="mt-1 block text-[13px] leading-snug">
+          {change.title}
+        </strong>
+        {change.problem && (
+          <p className="mt-0.5 text-xs text-foreground/80">{change.problem}</p>
+        )}
+        {change.detail && (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {change.detail}
+          </p>
+        )}
+        {change.range && change.range.min !== change.range.max && (
+          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+            {signed(change.range.min)} to {signed(change.range.max)} by day
+          </p>
+        )}
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {change.sources && change.sources.length > 0 ? (
+            <>
+              Estimates from{" "}
+              {change.sources.slice(0, 3).map((source, index) => (
+                <span key={source.url}>
+                  {index > 0 && ", "}
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    {source.title || new URL(source.url).hostname}
+                  </a>
+                </span>
+              ))}
+            </>
+          ) : (
+            "Estimates are the AI's own; check them before buying."
+          )}
+        </p>
+      </div>
+      <button
+        type="button"
+        disabled={change.added}
+        onClick={() => onAdd(change)}
+        aria-label={
+          change.added
+            ? `${change.title} is in the redesign`
+            : `Add ${change.title} to the redesign`
+        }
+        className={cn(
+          "grid size-8 shrink-0 place-items-center rounded-full border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
+          change.added
+            ? "border-ink bg-primary text-[#14140f]"
+            : "border-border hover:border-ink hover:bg-accent",
+        )}
+      >
+        {change.added ? (
+          <CheckIcon className="size-4" />
+        ) : (
+          <PlusIcon className="size-4" />
+        )}
+      </button>
+    </li>
+  );
+}
 
 function Delta({
   value,
@@ -54,34 +159,120 @@ function Delta({
   );
 }
 
+/** A count averaged over days: whole when it is whole, else to one decimal. */
+const averaged = (value: number) =>
+  Number.isInteger(value) ? String(value) : value.toFixed(1);
+
+const mean = (values: number[]) =>
+  values.reduce((sum, value) => sum + value, 0) / values.length;
+
+// The playbook is trusted for averages while it lands this close to the
+// crew's real day.
+const FAITHFUL = 0.1;
+
+/** The crew's playbook as plain sentences. */
+function PlaybookRules({
+  playbook,
+  names,
+}: {
+  playbook: Playbook;
+  names: Map<string, string>;
+}) {
+  const name = (id: string) => names.get(id) ?? id;
+  const release = Object.entries(playbook.release);
+  const service = Object.entries(playbook.serviceEveryHours);
+  const rules = [
+    playbook.repairOrder.length > 0 &&
+      `Repairs go first at ${playbook.repairOrder.map(name).join(", then ")}; otherwise whoever waited longest.`,
+    ...release.map(([source, rule]) => {
+      const paces = [
+        rule.slowAboveWip !== undefined &&
+          `80% above ${rule.slowAboveWip} parts in progress`,
+        rule.fastBelowWip !== undefined && `120% below ${rule.fastBelowWip}`,
+      ].filter(Boolean);
+      return `${name(source)}: release at ${paces.join(", ")}, 100% otherwise.`;
+    }),
+    ...service.map(
+      ([machine, hours]) =>
+        `Service ${name(machine)} after every ${averaged(hours)} h of work, when a crew is free.`,
+    ),
+  ].filter(Boolean) as string[];
+  return (
+    <div className="flex flex-col gap-1.5 text-xs">
+      {playbook.notes && (
+        <p className="text-muted-foreground">{playbook.notes}</p>
+      )}
+      {rules.length > 0 ? (
+        <ul className="list-disc pl-4">
+          {rules.map((rule) => (
+            <li key={rule}>{rule}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-muted-foreground">
+          The crew decided much as the standard rules would, so the playbook is
+          the standard rules.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** The measured outcome: standard rules, the agents, and the redesign. */
 export function ResultsTab({
   run,
   redesign,
   measuring,
+  crewDays,
+  writingPlaybook,
+  playbookProblem,
   showRedesign,
   suggestions,
   problem,
   onAdd,
+  scouted,
+  scouting,
+  scoutNote,
+  onScout,
 }: {
   run: StoredRun;
-  /** The redesign on standard rules; null when it has no changes. */
-  redesign: Kpis | null;
+  /** The redesign on standard rules over the run's days; null with no changes. */
+  redesign: Measured | null;
   measuring: boolean;
+  /** The crew's playbook replayed over the run's days, once it is written. */
+  crewDays: Kpis[] | null;
+  writingPlaybook: boolean;
+  playbookProblem: string;
   /** Whether the station breakdown shows the redesign rather than the run. */
   showRedesign: boolean;
   suggestions: (MeasuredChange & { added: boolean })[] | null;
   problem: string;
   onAdd: (change: MeasuredChange) => void;
+  /** What the AI found the plant is missing; null before anyone asked. */
+  scouted: (MeasuredChange & { added: boolean })[] | null;
+  scouting: boolean;
+  /** Why nothing was found, or what was left out. */
+  scoutNote: string;
+  onScout: () => void;
 }) {
   const names = new Map(run.graph.nodes.map(({ id, name }) => [id, name]));
-  const { kpis, baseline } = run;
+  const { kpis } = run;
+  const ruleDays = daysOf(run);
+  const dayCount = ruleDays.length;
   const target = run.scenario.targets?.throughputPerShift;
   const hasAgents = run.agents.length > 0;
-  const columns = [
-    { key: "rules", label: "Standard rules", kpis: baseline },
-    ...(hasAgents ? [{ key: "agents", label: "Your agents", kpis }] : []),
-    { key: "redesign", label: "Redesign", kpis: redesign },
+  const columns: {
+    key: string;
+    label: string;
+    /** Each day of this column; null while it is measured. */
+    days: Kpis[] | null;
+  }[] = [
+    { key: "rules", label: "Standard rules", days: ruleDays },
+    // Until the playbook is written, the crew's one real day stands in.
+    ...(hasAgents
+      ? [{ key: "agents", label: "Your agents", days: crewDays ?? [kpis] }]
+      : []),
+    { key: "redesign", label: "Redesign", days: redesign?.days ?? null },
   ];
   const rows: {
     label: string;
@@ -90,7 +281,7 @@ export function ResultsTab({
     digits?: number;
     lowerIsBetter?: boolean;
   }[] = [
-    { label: "Parts shipped", value: (k) => k.completed, show: String },
+    { label: "Parts shipped", value: (k) => k.completed, show: averaged },
     {
       label: "Average work in progress",
       value: (k) => k.averageWip,
@@ -101,26 +292,32 @@ export function ResultsTab({
     {
       label: "Parts scrapped",
       value: (k) => k.scrapped,
-      show: String,
+      show: averaged,
       lowerIsBetter: true,
     },
     ...(target
       ? [
           {
             label: `Of the ${target} target`,
-            value: (k: Kpis) => Math.round((k.completed / target) * 100),
-            show: (v: number) => `${v}%`,
+            value: (k: Kpis) => (k.completed / target) * 100,
+            show: (v: number) => `${Math.round(v)}%`,
           },
         ]
       : []),
   ];
 
-  const shown = showRedesign && redesign ? redesign : kpis;
+  const shown = showRedesign && redesign ? redesign.average : kpis;
   const stations = run.graph.nodes.filter(
     (node): node is Extract<FactoryNode, { kind: "station" }> =>
       node.kind === "station",
   );
   const supports = run.graph.nodes.filter(({ kind }) => kind === "support");
+  // How closely the playbook reproduces the crew, on the crew's own day.
+  const replayed = crewDays?.[0]?.completed;
+  const faithful =
+    replayed === undefined ||
+    Math.abs(replayed - kpis.completed) <=
+      FAITHFUL * Math.max(1, kpis.completed);
 
   return (
     <div className="flex flex-col gap-6">
@@ -129,8 +326,11 @@ export function ResultsTab({
           {headline(run)}
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Same shift, same random events: on standard rules
-          {hasAgents ? ", with your agents," : ""} and with your redesign.
+          {dayCount > 1
+            ? `Averaged over ${dayCount} days, each with its own random events, with the lowest and highest day under each figure. `
+            : "One day of random events. "}
+          {hasAgents &&
+            "Your agents worked one day for real; their playbook replays how they worked on the rest. "}
           Changes are measured on standard rules, so they compare fairly.
         </p>
       </div>
@@ -150,58 +350,108 @@ export function ResultsTab({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map((row) => (
-            <tr key={row.label}>
-              <td className="py-2 pr-2 align-top text-muted-foreground">
-                {row.label}
-              </td>
-              {columns.map((column) => (
-                <td
-                  key={column.key}
-                  className="py-2 pl-3 text-right align-top font-mono whitespace-nowrap tabular-nums"
-                >
-                  {column.kpis ? (
-                    <>
-                      <span className="block">
-                        {row.show(row.value(column.kpis))}
-                      </span>
+          {rows.map((row) => {
+            const base = mean(ruleDays.map(row.value));
+            return (
+              <tr key={row.label}>
+                <td className="py-2 pr-2 align-top text-muted-foreground">
+                  {row.label}
+                </td>
+                {columns.map((column) => {
+                  if (!column.days) {
+                    return (
+                      <td
+                        key={column.key}
+                        className="py-2 pl-3 text-right align-top text-muted-foreground"
+                      >
+                        {measuring ? "…" : "–"}
+                      </td>
+                    );
+                  }
+                  const values = column.days.map(row.value);
+                  const average = mean(values);
+                  const low = Math.min(...values);
+                  const high = Math.max(...values);
+                  return (
+                    <td
+                      key={column.key}
+                      className="py-2 pl-3 text-right align-top font-mono whitespace-nowrap tabular-nums"
+                    >
+                      <span className="block">{row.show(average)}</span>
+                      {low !== high && (
+                        <span className="block text-[11px] leading-tight text-muted-foreground">
+                          {row.show(low)}–{row.show(high)}
+                        </span>
+                      )}
+                      {column.key === "agents" && crewDays && (
+                        <span className="block text-[11px] leading-tight text-muted-foreground">
+                          real day {row.show(row.value(kpis))}
+                        </span>
+                      )}
                       {column.key !== "rules" && (
                         <Delta
-                          value={row.value(column.kpis)}
-                          base={row.value(baseline)}
+                          value={average}
+                          base={base}
                           digits={row.digits}
                           lowerIsBetter={row.lowerIsBetter}
                         />
                       )}
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">
-                      {measuring ? "…" : "–"}
-                    </span>
-                  )}
-                </td>
-              ))}
-            </tr>
-          ))}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
           <tr>
             <td className="py-2 pr-2 text-muted-foreground">Bottleneck</td>
             {columns.map((column) => (
               <td key={column.key} className="py-2 pl-3 text-right text-xs">
-                {column.kpis
-                  ? (names.get(column.kpis.bottleneck ?? "") ?? "None")
+                {column.days
+                  ? (names.get(averageKpis(column.days).bottleneck ?? "") ??
+                    "None")
                   : "–"}
               </td>
             ))}
           </tr>
         </tbody>
       </table>
+      {hasAgents && (
+        <p
+          className={cn(
+            "-mt-3 text-[11px]",
+            faithful ? "text-muted-foreground" : ui.fair,
+          )}
+        >
+          {writingPlaybook
+            ? "Writing the crew's playbook to replay it on the other days…"
+            : playbookProblem
+              ? `The crew's playbook could not be written (${playbookProblem}), so their column is their one real day.`
+              : replayed === undefined
+                ? run.playbook === undefined
+                  ? "Their column is their one real day; run the shift again to replay the crew on every day."
+                  : "Replaying the crew's playbook on every day…"
+                : faithful
+                  ? `Playbook on the crew's day: ${replayed} parts; the real crew shipped ${kpis.completed}.`
+                  : `Playbook on the crew's day: ${replayed} parts, but the real crew shipped ${kpis.completed}, so treat their averages with care.`}
+        </p>
+      )}
+      {run.playbook && (
+        <details className="-mt-3 rounded-2xl border border-border p-3">
+          <summary className="cursor-pointer text-xs font-semibold">
+            Crew playbook
+          </summary>
+          <div className="mt-2">
+            <PlaybookRules playbook={run.playbook} names={names} />
+          </div>
+        </details>
+      )}
       {problem && <p className={cn(ui.poor, "text-sm")}>{problem}</p>}
 
       <section>
         <h3 className={sectionTitle}>
           Suggested changes
           <span className="text-[11px] font-normal text-muted-foreground">
-            each re-simulated on its own
+            each re-simulated on its own, over the same days
           </span>
         </h3>
         {!suggestions ? (
@@ -228,12 +478,18 @@ export function ResultsTab({
                           : "text-muted-foreground",
                       )}
                     >
-                      {signed(change.gain)}/shift
+                      {signedAverage(change.gain)}/shift
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {change.detail}
                   </p>
+                  {change.range && change.range.min !== change.range.max && (
+                    <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                      {signed(change.range.min)} to {signed(change.range.max)}{" "}
+                      by day
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -261,6 +517,43 @@ export function ResultsTab({
             ))}
           </ul>
         )}
+      </section>
+
+      <section aria-label="New equipment">
+        <h3 className={sectionTitle}>
+          New equipment
+          <span className="text-[11px] font-normal text-muted-foreground">
+            the AI&apos;s ideas, each re-simulated
+          </span>
+        </h3>
+        {scouted === null && !scouting && (
+          <p className={cn(ui.hint, "mb-2")}>
+            Machines, support equipment or spare parts the plant does not have
+            yet, that would fix what this run shows. The AI searches the web for
+            realistic figures, so it takes a minute.
+          </p>
+        )}
+        {scouted && scouted.length > 0 && (
+          <ul className="mb-2 flex flex-col gap-2">
+            {scouted.map((change) => (
+              <ScoutedRow key={change.id} change={change} onAdd={onAdd} />
+            ))}
+          </ul>
+        )}
+        {scoutNote && <p className={cn(ui.hint, "mb-2")}>{scoutNote}</p>}
+        <button
+          type="button"
+          className={cn(ui.button, "h-8")}
+          disabled={scouting}
+          onClick={onScout}
+        >
+          <TelescopeIcon />
+          {scouting
+            ? "Looking and measuring…"
+            : scouted === null
+              ? "Look for new equipment"
+              : "Look again"}
+        </button>
       </section>
 
       <section>
@@ -372,8 +665,14 @@ export function ResultsTab({
                       key={column.key}
                       className="py-1.5 text-right font-mono tabular-nums"
                     >
-                      {column.kpis
-                        ? percent(column.kpis.supports?.[support.id]?.down ?? 0)
+                      {column.days
+                        ? percent(
+                            mean(
+                              column.days.map(
+                                (day) => day.supports?.[support.id]?.down ?? 0,
+                              ),
+                            ),
+                          )
                         : "–"}
                     </td>
                   ))}
@@ -385,8 +684,11 @@ export function ResultsTab({
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        {run.scenario.name}: {run.scenario.shiftHours}-hour shift, seed{" "}
-        {run.seed}, {run.maintenanceCrews} maintenance{" "}
+        {run.scenario.name}: {run.scenario.shiftHours}-hour shift,{" "}
+        {dayCount > 1
+          ? `seeds ${run.seed}–${run.seed + dayCount - 1}`
+          : `seed ${run.seed}`}
+        , {run.maintenanceCrews} maintenance{" "}
         {run.maintenanceCrews === 1 ? "crew" : "crews"}, {run.decisions.length}{" "}
         agent decisions, {run.adjustments.length} adjustments to the twin.
       </p>
@@ -442,7 +744,7 @@ export function ChangesTab({
             ? "Add a suggested change, or tell the assistant below what you would change. Your twin is not touched until you apply the redesign."
             : together === null
               ? "Measuring them together…"
-              : `Together ${signed(together)} parts per shift on standard rules; one by one they add up to ${signed(sum)}.`}
+              : `Together ${signedAverage(together)} parts per shift on standard rules; one by one they add up to ${signedAverage(sum)}.`}
         </p>
       </section>
 
@@ -502,7 +804,7 @@ export function ChangesTab({
                             : "bg-muted text-muted-foreground",
                         )}
                       >
-                        {change.origin === "asked" ? "You asked" : "Suggested"}
+                        {originLabel(change)}
                       </span>
                       <strong className="block text-[13px] leading-snug">
                         {change.title}
@@ -541,7 +843,7 @@ export function ChangesTab({
                           ? "…"
                           : gain === "failed"
                             ? "only with the others"
-                            : `${signed(gain)} parts/shift`}
+                            : `${signedAverage(gain)} parts/shift`}
                       </dd>
                     </div>
                     <div>

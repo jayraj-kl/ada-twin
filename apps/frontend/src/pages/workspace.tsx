@@ -10,6 +10,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router";
 import { Avatar } from "@/components/avatar";
+import { ModelPicker } from "@/components/model-picker";
 import { ProfileMenu, TopBar } from "@/components/top-bar";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,9 +70,15 @@ function NameDialog({
           }}
         >
           <div className="grid size-12 place-items-center rounded-2xl border-2 border-ink bg-primary text-[#14140f]">
-            {renaming ? <PencilIcon className="size-5" /> : <FolderPlusIcon className="size-5" />}
+            {renaming ? (
+              <PencilIcon className="size-5" />
+            ) : (
+              <FolderPlusIcon className="size-5" />
+            )}
           </div>
-          <DialogTitle>{renaming ? "Rename project" : "New project"}</DialogTitle>
+          <DialogTitle>
+            {renaming ? "Rename project" : "New project"}
+          </DialogTitle>
           <DialogDescription>
             {renaming
               ? "Give this project a new name."
@@ -118,7 +125,11 @@ function ProjectCard({
     <motion.li
       layout
       variants={riseIn}
-      exit={{ opacity: 0, scale: 0.95, transition: { duration: motionTokens.duration.fast } }}
+      exit={{
+        opacity: 0,
+        scale: 0.95,
+        transition: { duration: motionTokens.duration.fast },
+      }}
       whileHover={{ x: -4, y: -4 }}
       whileTap={{ scale: 0.99 }}
       transition={springs.snappy}
@@ -174,7 +185,11 @@ function ProjectCard({
           <DropdownMenuItem
             destructive
             onSelect={() => {
-              if (window.confirm(`Delete "${project.name}" and everything saved in it?`)) {
+              if (
+                window.confirm(
+                  `Delete "${project.name}" and everything saved in it?`,
+                )
+              ) {
                 deleteProject(project.id);
               }
             }}
@@ -198,7 +213,15 @@ export default function WorkspacePage() {
 
   return (
     <div className="min-h-svh">
-      <TopBar logoTo="/workspace" end={<ProfileMenu />} />
+      <TopBar
+        logoTo="/workspace"
+        end={
+          <>
+            <ModelPicker />
+            <ProfileMenu />
+          </>
+        }
+      />
       <main className="mx-auto max-w-7xl px-4 pt-12 pb-24 sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: motionTokens.distance.md }}
@@ -207,10 +230,16 @@ export default function WorkspacePage() {
           className="mb-10 flex flex-wrap items-center justify-between gap-6"
         >
           <div className="flex items-center gap-4">
-            <Avatar seed={profile.avatarSeed} className="size-16 shadow-hard-sm" />
+            <Avatar
+              seed={profile.avatarSeed}
+              className="size-16 shadow-hard-sm"
+            />
             <div>
               <h1 className="text-3xl font-bold tracking-[-0.03em] sm:text-4xl">
-                Hey {firstName(profile)} <span className="inline-block origin-[70%_70%] animate-[wave_1.6s_ease-in-out_1]">👋</span>
+                Hey {firstName(profile)}{" "}
+                <span className="inline-block origin-[70%_70%] animate-[wave_1.6s_ease-in-out_1]">
+                  👋
+                </span>
               </h1>
               <p className="mt-1 text-muted-foreground">
                 {projects.length === 0
@@ -243,7 +272,9 @@ export default function WorkspacePage() {
               </span>
               <span>
                 <span className="block text-lg font-bold tracking-tight">
-                  {projects.length === 0 ? "Create your first project" : "New project"}
+                  {projects.length === 0
+                    ? "Create your first project"
+                    : "New project"}
                 </span>
                 <span className="text-sm text-muted-foreground">
                   One project per plant, hall or line
@@ -263,7 +294,13 @@ export default function WorkspacePage() {
         </motion.ul>
       </main>
       <NameDialog
-        key={editing ? (editing.mode === "rename" ? editing.project.id : "create") : "closed"}
+        key={
+          editing
+            ? editing.mode === "rename"
+              ? editing.project.id
+              : "create"
+            : "closed"
+        }
         editing={editing}
         onClose={() => setEditing(null)}
       />

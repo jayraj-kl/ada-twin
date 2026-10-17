@@ -1,6 +1,6 @@
 import { type Scenario, applyScenario } from "@repo/sim";
 import { Link } from "react-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EMPTY_FLOW, FLOW_KEY, type Flow } from "@/twin/flow";
 import {
   DEFAULT_SCENARIO,
@@ -10,12 +10,19 @@ import {
   buildGraph,
   useStored,
 } from "@/twin/project";
-import { useProjectPath } from "@/lib/projects";
+import { projectKey, useProjectId, useProjectPath } from "@/lib/projects";
+import { readJson, writeJson } from "@/lib/storage";
+import { applyAnswer, valueOf } from "@/scenario/fields";
+import { ScenarioChat, type ScenarioChatMessage } from "@/scenario/ScenarioChat";
+import { describeScenario } from "@/twin/api";
 import { NumberField } from "@/components/ui/number-field";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
 const NO_MACHINES: SavedMachine[] = [];
+const CHAT_KEY = "twin-scenario-chat";
+// Enough to follow the conversation; older turns drop off.
+const CHAT_LIMIT = 40;
 
 const PARAM_EFFECTS: Record<string, (factor: number) => string> = {
   interArrival: (factor) =>
@@ -79,6 +86,92 @@ export default function ScenarioPage() {
   const setTarget = (change: Scenario["targets"]) =>
     setScenario({ ...scenario, targets: { ...scenario.targets, ...change } });
 
+  // --- describing the scenario in words --------------------------------------
+  const projectId = useProjectId();
+  const chatKey = projectKey(projectId, CHAT_KEY);
+  const [chat, setChat] = useState<ScenarioChatMessage[]>([]);
+  const [chatLoaded, setChatLoaded] = useState(false);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    setChat(readJson<ScenarioChatMessage[]>(chatKey) ?? []);
+    setChatLoaded(true);
+  }, [chatKey]);
+  useEffect(() => {
+    if (chatLoaded) writeJson(chatKey, chat.slice(-CHAT_LIMIT));
+  }, [chat, chatLoaded, chatKey]);
+
+  async function ask(text: string) {
+    const request: ScenarioChatMessage = {
+      id: `s${Date.now().toString(36)}u`,
+      role: "user",
+      text,
+    };
+    // What each earlier answer proposed, and whether it was taken, is part
+    // of the conversation; failed requests are not.
+    const conversation = [...chat, request]
+      .filter(({ failed }) => !failed)
+      .map(({ role, text, proposal, decided }) => ({
+        role,
+        text:
+          proposal && decided
+            ? `${text} (proposal ${decided})`
+            : text,
+      }));
+    setChat((current) => [...current, request]);
+    setAsking(true);
+    try {
+      const answer = await describeScenario(
+        scenario,
+        machines.map(({ id, name }) => ({ id, name })),
+        conversation,
+      );
+      const proposes =
+        answer.changes.length > 0 ||
+        answer.briefing !== null ||
+        answer.notModelled.length > 0;
+      setChat((current) => [
+        ...current,
+        {
+          id: `s${Date.now().toString(36)}a`,
+          role: "assistant",
+          text: answer.reply || "Here is what I would set.",
+          proposal: proposes
+            ? {
+                changes: answer.changes.map((change) => ({
+                  ...change,
+                  from: valueOf(scenario, change.field),
+                })),
+                briefing: answer.briefing,
+                notModelled: answer.notModelled,
+              }
+            : undefined,
+        },
+      ]);
+    } catch (error) {
+      setChat((current) => [
+        ...current,
+        {
+          id: `s${Date.now().toString(36)}e`,
+          role: "assistant",
+          text: error instanceof Error ? error.message : String(error),
+          failed: true,
+        },
+      ]);
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  function decide(id: string, decided: "accepted" | "dismissed") {
+    const message = chat.find((entry) => entry.id === id);
+    if (decided === "accepted" && message?.proposal) {
+      setScenario(applyAnswer(scenario, message.proposal));
+    }
+    setChat((current) =>
+      current.map((entry) => (entry.id === id ? { ...entry, decided } : entry)),
+    );
+  }
+
   const effects = useMemo(() => {
     const graph = buildGraph(machines, flow);
     const names = new Map(graph.nodes.map(({ id, name }) => [id, name]));
@@ -115,6 +208,17 @@ export default function ScenarioPage() {
         show exactly how each condition changes the simulation before anything
         runs.
       </p>
+
+      <div className={ui.panel} style={{ marginBottom: 20 }}>
+        <ScenarioChat
+          messages={chat}
+          busy={asking}
+          onSend={ask}
+          onAccept={(id) => decide(id, "accepted")}
+          onDismiss={(id) => decide(id, "dismissed")}
+          onClear={() => setChat([])}
+        />
+      </div>
 
       <div className={ui.grid2}>
         <div className={ui.stack}>
@@ -217,6 +321,31 @@ export default function ScenarioPage() {
                 onChange={(value) => setTarget({ maxDownShare: value })}
               />
             </div>
+          </div>
+
+          <div className={ui.panel}>
+            <div className={ui.panelTitle}>
+              Crew briefing
+              <span className={ui.hint}>
+                what your agents are told, beyond the targets
+              </span>
+            </div>
+            <label htmlFor="briefing" className="sr-only">
+              Crew briefing
+            </label>
+            <textarea
+              id="briefing"
+              rows={3}
+              className={cn(ui.input, "h-auto w-full py-2")}
+              placeholder="For example: the cabinet has been tripping, so keep an eye on it. Missing 300 parts is the one thing management will not accept."
+              value={scenario.briefing ?? ""}
+              onChange={(event) =>
+                set({ briefing: event.target.value || undefined })
+              }
+            />
+            <p className={ui.hint} style={{ marginTop: 6 }}>
+              It changes how the agents decide, not the plant itself.
+            </p>
           </div>
         </div>
 
