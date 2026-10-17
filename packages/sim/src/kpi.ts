@@ -3,9 +3,9 @@ export interface StationTimes {
   busyTime: number;
   blockedTime: number;
   downTime: number;
-  /** Seconds stopped because support equipment it needs was down. */
+  /** Unit-seconds stopped because support equipment it needs was down. */
   stoppedTime: number;
-  /** Seconds each piece of support equipment it needs was down. */
+  /** Unit-seconds stopped by each piece of support equipment it needs. */
   stoppedBy: Record<string, number>;
 }
 
@@ -14,12 +14,12 @@ export interface StationKpis {
   utilisation: number;
   /** Share of unit-time holding a finished part that downstream had no room for. */
   blocked: number;
-  /** Share of time failed, under repair or in preventive maintenance. */
+  /** Share of unit-time failed, under repair or in preventive maintenance. */
   down: number;
-  /** Share of time stopped, though itself fine, by support equipment it needs. */
+  /** Share of unit-time stopped, though itself fine, by support equipment it needs. */
   stopped: number;
   /**
-   * Share of time each support it needs was down. Two can be down at once,
+   * Share of unit-time stopped by each support it needs. Two can be down at once,
    * so these can add up to more than `stopped`.
    */
   stoppedBy: Record<string, number>;
@@ -61,12 +61,12 @@ export function computeKpis(run: {
     const unitTime = station.units * run.horizon;
     const utilisation = station.busyTime / unitTime;
     const blocked = station.blockedTime / unitTime;
-    const down = station.downTime / run.horizon;
-    const stopped = station.stoppedTime / run.horizon;
+    const down = station.downTime / unitTime;
+    const stopped = station.stoppedTime / unitTime;
     const stoppedBy = Object.fromEntries(
       Object.entries(station.stoppedBy).map(([id, time]) => [
         id,
-        time / run.horizon,
+        time / unitTime,
       ]),
     );
     const idle = Math.max(0, 1 - utilisation - blocked - down - stopped);

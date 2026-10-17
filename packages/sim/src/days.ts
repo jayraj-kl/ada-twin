@@ -1,5 +1,5 @@
 import type { FactoryGraph } from "./graph";
-import { type SimConfig, defaultPolicy, simulate } from "./kernel";
+import { type Policy, type SimConfig, defaultPolicy, simulate } from "./kernel";
 import type { Kpis, StationKpis } from "./kpi";
 
 /** The average of a measure over several days, and how far it ranged. */
@@ -79,21 +79,23 @@ export function averageKpis(runs: Kpis[]): Kpis {
 }
 
 /**
- * Runs the same shift `days` times on standard rules, each day on its own
- * seed (`config.seed`, then the next, and so on), so one lucky or unlucky day
- * cannot pass for the plant's real performance. Day one replays `config.seed`.
+ * Runs the same shift `days` times, on standard rules unless a `policy` is
+ * given, each day on its own seed (`config.seed`, then the next, and so on),
+ * so one lucky or unlucky day cannot pass for the plant's real performance.
+ * Day one replays `config.seed`.
  */
 export async function simulateDays(
   graph: FactoryGraph,
   config: Omit<SimConfig, "recordEvents" | "onEvent">,
   days: number,
+  policy: Policy = defaultPolicy,
 ): Promise<Kpis[]> {
   const runs: Kpis[] = [];
   for (let day = 0; day < days; day++) {
     const { kpis } = await simulate(
       graph,
       { ...config, seed: config.seed + day, recordEvents: false },
-      defaultPolicy,
+      policy,
     );
     runs.push(kpis);
   }

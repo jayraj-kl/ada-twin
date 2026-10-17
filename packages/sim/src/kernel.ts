@@ -49,7 +49,7 @@ export type SimEvent = { time: number } & (
   | {
       type: "failure" | "repair-start" | "repair-end";
       node: string;
-      /** Which unit, for support equipment. */
+      /** Which unit of the station or support equipment. */
       unit?: number;
     }
   | {
@@ -72,8 +72,8 @@ export interface CrewJob {
   /** The station or support equipment the job is on. */
   station: string;
   /**
-   * The support unit to repair. A preventive job on support equipment takes
-   * whichever unit has run longest when the crew gets there.
+   * The unit to repair. A preventive job takes whichever unit is most worn
+   * when the crew gets there.
    */
   unit?: number;
   job: "repair" | "preventive";
@@ -97,7 +97,11 @@ export interface Snapshot {
     name: string;
     status: StationStatus;
     busyUnits: number;
+    /** Units failed, under repair or being serviced. */
+    unitsDown: number;
     units: number;
+    /** Most hours any unit has worked since its last repair or service. */
+    wearHours: number;
   }[];
   buffers: { id: string; name: string; level: number; capacity: number }[];
   sources: {
@@ -117,6 +121,8 @@ export interface Snapshot {
     units: number;
     /** Names of the stations and sources that stop while it is down. */
     neededBy: string[];
+    /** Most hours any unit has worked since its last repair or service. */
+    wearHours: number;
   }[];
 }
 
@@ -175,28 +181,47 @@ interface Scheduled {
   cancelled: boolean;
 }
 
+type Condition = "up" | "down" | "repairing" | "preventive";
+
+/**
+ * How much more work a unit has in it before it breaks. Wear builds only
+ * while the unit works, so idle, blocked or stopped time does not count.
+ */
+interface WearClock {
+  /** Working seconds left until it fails; Infinity for a unit that never does. */
+  left: number;
+  /** Working seconds since its last repair or service, up to `since`. */
+  worn: number;
+  /** When it started working, while it works; null otherwise. */
+  since: number | null;
+  /** Bumped to cancel the failure scheduled for the current stretch of work. */
+  token: number;
+}
+
+/** One of a station's identical machines. */
+interface StationUnit {
+  condition: Condition;
+  cycle: { part: Part; end: number; scheduled: Scheduled } | null;
+  /** A part interrupted mid-cycle, carried on when the unit runs again. */
+  paused: { part: Part; remaining: number } | null;
+  /** A finished part still on the unit because downstream is full. */
+  done: { part: Part; at: number } | null;
+  wear: WearClock;
+}
+
 interface StationState extends StationTimes {
   node: StationNode;
-  units: number;
-  processing: Map<number, { part: Part; end: number; scheduled: Scheduled }>;
-  /** Parts interrupted mid-cycle while the station is not up. */
-  paused: { part: Part; remaining: number }[];
-  /** Finished parts still occupying a unit because downstream is full. */
-  done: Part[];
-  condition: Condition | "stopped";
-  failureToken: number;
+  units: StationUnit[];
+  /** Halted, though itself fine, because support equipment it needs is down. */
+  stopped: boolean;
   reported: StationStatus;
   /** Support equipment it cannot run without. */
   needs: string[];
 }
 
-type Condition = "up" | "down" | "repairing" | "preventive";
-
 interface SupportUnit {
   condition: Condition;
-  failureToken: number;
-  /** When it was last repaired or serviced, or the run began. */
-  wornSince: number;
+  wear: WearClock;
 }
 
 interface SupportState {
@@ -299,16 +324,28 @@ export async function simulate(
     }
   >();
   const supports = new Map<string, SupportState>();
+  /** A unit fresh from a repair, a service or the start of the run. */
+  const freshWear = (mtbf: number | undefined): WearClock => ({
+    left: mtbf ? random.wearOut(mtbf) : Infinity,
+    worn: 0,
+    since: null,
+    token: 0,
+  });
   for (const node of graph.nodes) {
     if (node.kind === "station") {
       stations.set(node.id, {
         node,
-        units: Math.max(1, Math.round(node.units.value)),
-        processing: new Map(),
-        paused: [],
-        done: [],
-        condition: "up",
-        failureToken: 0,
+        units: Array.from(
+          { length: Math.max(1, Math.round(node.units.value)) },
+          (): StationUnit => ({
+            condition: "up",
+            cycle: null,
+            paused: null,
+            done: null,
+            wear: freshWear(node.mtbf?.value),
+          }),
+        ),
+        stopped: false,
         reported: "idle",
         needs: needs.get(node.id) ?? [],
         busyTime: 0,
@@ -332,7 +369,10 @@ export async function simulate(
         node,
         units: Array.from(
           { length: Math.max(1, Math.round(node.units.value)) },
-          () => ({ condition: "up", failureToken: 0, wornSince: 0 }),
+          (): SupportUnit => ({
+            condition: "up",
+            wear: freshWear(node.mtbf?.value),
+          }),
         ),
         neededBy: [...needs]
           .filter(([, list]) => list.includes(node.id))
@@ -354,17 +394,24 @@ export async function simulate(
     const elapsed = time - now;
     if (elapsed <= 0) return;
     wipTime += wip * elapsed;
+    // Every measure is unit-time, so a station of two units down one unit for
+    // an hour lost half its capacity for that hour.
     for (const station of stations.values()) {
-      station.busyTime += station.processing.size * elapsed;
-      station.blockedTime += station.done.length * elapsed;
-      if (station.condition === "stopped") {
-        station.stoppedTime += elapsed;
-        for (const id of station.needs) {
-          if (supportUp(supports.get(id)!)) continue;
-          station.stoppedBy[id] = (station.stoppedBy[id] ?? 0) + elapsed;
+      // Each unit is in exactly one state, so the shares add up to at most 1.
+      for (const unit of station.units) {
+        if (unit.condition !== "up") {
+          station.downTime += elapsed;
+        } else if (unit.cycle) {
+          station.busyTime += elapsed;
+        } else if (unit.done) {
+          station.blockedTime += elapsed;
+        } else if (station.stopped) {
+          station.stoppedTime += elapsed;
+          for (const id of station.needs) {
+            if (supportUp(supports.get(id)!)) continue;
+            station.stoppedBy[id] = (station.stoppedBy[id] ?? 0) + elapsed;
+          }
         }
-      } else if (station.condition !== "up") {
-        station.downTime += elapsed;
       }
     }
     for (const support of supports.values()) {
@@ -385,13 +432,18 @@ export async function simulate(
     return routes[routes.length - 1]!.to;
   }
 
+  /** A unit that is up, holds no part, and whose station is not stopped. */
+  const freeUnit = (station: StationState) =>
+    station.stopped
+      ? undefined
+      : station.units.find(
+          (unit) =>
+            unit.condition === "up" && !unit.cycle && !unit.paused && !unit.done,
+        );
+
   function accepts(id: string): boolean {
     const station = stations.get(id);
-    if (station) {
-      const occupied =
-        station.processing.size + station.paused.length + station.done.length;
-      return station.condition === "up" && occupied < station.units;
-    }
+    if (station) return freeUnit(station) !== undefined;
     const buffer = buffers.get(id);
     if (buffer) return buffer.queue.length < buffer.capacity;
     return !sources.has(id);
@@ -419,10 +471,15 @@ export async function simulate(
     emit({ time: now, type: "created", node: id, part: part.id });
   }
 
-  function beginCycle(station: StationState, part: Part, duration: number) {
+  function beginCycle(
+    station: StationState,
+    unit: StationUnit,
+    part: Part,
+    duration: number,
+  ) {
     const end = now + duration;
     const scheduled = schedule(end, () => {
-      station.processing.delete(part.id);
+      unit.cycle = null;
       const scrapRate = station.node.scrapRate?.value ?? 0;
       if (scrapRate > 0 && random.next() < scrapRate) {
         scrapped += 1;
@@ -436,10 +493,10 @@ export async function simulate(
         return;
       }
       part.target = pickTarget(station.node.id);
-      station.done.push(part);
+      unit.done = { part, at: now };
       emit({ time: now, type: "finish", node: station.node.id, part: part.id });
     });
-    station.processing.set(part.id, { part, end, scheduled });
+    unit.cycle = { part, end, scheduled };
   }
 
   function deliver(part: Part) {
@@ -450,6 +507,7 @@ export async function simulate(
       const variation = station.node.cycleTimeVariation?.value ?? 0;
       beginCycle(
         station,
+        freeUnit(station)!,
         part,
         random.spread(station.node.cycleTime.value, variation),
       );
@@ -484,8 +542,15 @@ export async function simulate(
         }
       }
       for (const station of stations.values()) {
-        while (station.done[0] && accepts(station.done[0].target)) {
-          deliver(station.done.shift()!);
+        // Finished parts leave in the order they finished.
+        const waiting = station.units
+          .filter((unit) => unit.done)
+          .sort((a, b) => a.done!.at - b.done!.at);
+        for (const unit of waiting) {
+          if (!accepts(unit.done!.part.target)) break;
+          const { part } = unit.done!;
+          unit.done = null;
+          deliver(part);
           moved = true;
         }
       }
@@ -493,45 +558,108 @@ export async function simulate(
   }
 
   // --- failures and maintenance ---
-  function armFailure(station: StationState) {
-    const mtbf = station.node.mtbf?.value;
-    if (!mtbf) return;
-    const token = ++station.failureToken;
-    schedule(now + random.wearOut(mtbf), () => {
-      // A repair or service since this was armed reset the wear clock.
-      if (token !== station.failureToken) return;
-      // A station stopped for want of support can still be found broken.
-      if (station.condition !== "up" && station.condition !== "stopped") {
-        return;
-      }
-      halt(station, "down");
-      jobs.push({ station: station.node.id, job: "repair", waitingSince: now });
-      emit({ time: now, type: "failure", node: station.node.id });
+  /** Working seconds since the last repair or service, counting the stretch under way. */
+  const wornNow = (wear: WearClock) =>
+    wear.worn + (wear.since === null ? 0 : now - wear.since);
+
+  /** Working seconds left before a unit fails, counting the stretch under way. */
+  const leftNow = (wear: WearClock) =>
+    wear.left - (wear.since === null ? 0 : now - wear.since);
+
+  /** Starts or stops a unit's wear, scheduling its failure while it works. */
+  function setWorking(wear: WearClock, working: boolean, fail: () => void) {
+    if (working && wear.since === null) {
+      wear.since = now;
+      if (!Number.isFinite(wear.left)) return;
+      const token = ++wear.token;
+      schedule(now + wear.left, () => {
+        if (token !== wear.token) return;
+        wear.worn += now - wear.since!;
+        wear.left = 0;
+        wear.since = null;
+        fail();
+      });
+    } else if (!working && wear.since !== null) {
+      wear.left -= now - wear.since;
+      wear.worn += now - wear.since;
+      wear.since = null;
+      wear.token += 1;
+    }
+  }
+
+  /** Whether something that needs `support` is working right now. */
+  function inUse(support: SupportState) {
+    return support.neededBy.some((id) => {
+      const station = stations.get(id);
+      if (station) return station.units.some((unit) => unit.cycle);
+      // A source draws on its equipment for as long as it keeps releasing.
+      const source = sources.get(id);
+      return source !== undefined && !source.stopped;
     });
   }
 
-  function halt(station: StationState, condition: StationState["condition"]) {
-    station.condition = condition;
-    for (const { part, end, scheduled } of station.processing.values()) {
-      scheduled.cancelled = true;
-      station.paused.push({ part, remaining: end - now });
+  /**
+   * Runs each wear clock only while its unit works: a station unit while it
+   * processes a part, a support unit while it is one of the units on duty
+   * (not a standby spare) and something that needs it is working.
+   */
+  function refreshWear() {
+    for (const station of stations.values()) {
+      for (const unit of station.units) {
+        setWorking(unit.wear, unit.cycle !== null, () =>
+          failUnit(station, unit),
+        );
+      }
     }
-    station.processing.clear();
+    for (const support of supports.values()) {
+      const used = inUse(support);
+      let onDuty =
+        support.units.length - Math.round(support.node.spares?.value ?? 0);
+      for (const unit of support.units) {
+        const working = used && unit.condition === "up" && onDuty > 0;
+        if (unit.condition === "up") onDuty -= 1;
+        setWorking(unit.wear, working, () => failSupportUnit(support, unit));
+      }
+    }
   }
 
-  /** After its own repair or service: running again, if its support is. */
-  function resume(station: StationState) {
-    if (supplied(station.needs)) restart(station);
-    else station.condition = "stopped";
-    armFailure(station);
+  function failUnit(station: StationState, unit: StationUnit) {
+    haltUnit(unit, "down");
+    const index = station.units.indexOf(unit);
+    const id = station.node.id;
+    jobs.push({ station: id, unit: index, job: "repair", waitingSince: now });
+    emit({ time: now, type: "failure", node: id, unit: index });
   }
 
-  function restart(station: StationState) {
-    station.condition = "up";
-    for (const { part, remaining } of station.paused) {
-      beginCycle(station, part, remaining);
-    }
-    station.paused = [];
+  function failSupportUnit(support: SupportState, unit: SupportUnit) {
+    unit.condition = "down";
+    const index = support.units.indexOf(unit);
+    const id = support.node.id;
+    jobs.push({ station: id, unit: index, job: "repair", waitingSince: now });
+    emit({ time: now, type: "failure", node: id, unit: index });
+    supportChanged(support);
+  }
+
+  /** Interrupts a unit's part, to carry on where it left off later. */
+  function pause(unit: StationUnit) {
+    if (!unit.cycle) return;
+    const { part, end, scheduled } = unit.cycle;
+    scheduled.cancelled = true;
+    unit.paused = { part, remaining: end - now };
+    unit.cycle = null;
+  }
+
+  function haltUnit(unit: StationUnit, condition: Condition) {
+    unit.condition = condition;
+    pause(unit);
+  }
+
+  /** Carries on with a unit's interrupted part, if it and its station can run. */
+  function carryOn(station: StationState, unit: StationUnit) {
+    if (station.stopped || unit.condition !== "up" || !unit.paused) return;
+    const { part, remaining } = unit.paused;
+    unit.paused = null;
+    beginCycle(station, unit, part, remaining);
   }
 
   /** Stops or restarts what needs `support`, after one of its units changed. */
@@ -540,9 +668,13 @@ export async function simulate(
     for (const id of support.neededBy) {
       const station = stations.get(id);
       if (station) {
-        if (!up && station.condition === "up") halt(station, "stopped");
-        if (up && station.condition === "stopped" && supplied(station.needs)) {
-          restart(station);
+        if (!up && !station.stopped) {
+          station.stopped = true;
+          for (const unit of station.units) pause(unit);
+        }
+        if (up && station.stopped && supplied(station.needs)) {
+          station.stopped = false;
+          for (const unit of station.units) carryOn(station, unit);
         }
       }
       const source = sources.get(id);
@@ -556,20 +688,16 @@ export async function simulate(
     }
   }
 
-  function armSupportFailure(support: SupportState, unit: SupportUnit) {
-    unit.wornSince = now;
-    const token = ++unit.failureToken;
-    const mtbf = support.node.mtbf?.value;
-    if (!mtbf) return;
-    schedule(now + random.wearOut(mtbf), () => {
-      if (token !== unit.failureToken || unit.condition !== "up") return;
-      unit.condition = "down";
-      const index = support.units.indexOf(unit);
-      const id = support.node.id;
-      jobs.push({ station: id, unit: index, job: "repair", waitingSince: now });
-      emit({ time: now, type: "failure", node: id, unit: index });
-      supportChanged(support);
-    });
+  /** The up unit with the least work left in it, for a preventive service. */
+  function mostWorn<Unit extends { condition: Condition; wear: WearClock }>(
+    units: Unit[],
+  ): Unit | undefined {
+    let worst: Unit | undefined;
+    for (const unit of units) {
+      if (unit.condition !== "up") continue;
+      if (!worst || leftNow(unit.wear) < leftNow(worst.wear)) worst = unit;
+    }
+    return worst;
   }
 
   function startSupportJob(support: SupportState, job: CrewJob) {
@@ -581,12 +709,9 @@ export async function simulate(
       unit.condition = "repairing";
       duration = random.exponential(mttr);
     } else {
-      // The unit that has run longest since its last repair or service.
-      for (const candidate of support.units) {
-        if (candidate.condition !== "up") continue;
-        if (!unit || candidate.wornSince < unit.wornSince) unit = candidate;
-      }
+      unit = mostWorn(support.units);
       if (!unit) return;
+      setWorking(unit.wear, false, () => {});
       unit.condition = "preventive";
       duration = mttr * PREVENTIVE_SHARE;
       supportChanged(support);
@@ -599,7 +724,7 @@ export async function simulate(
     schedule(now + duration, () => {
       freeCrews += 1;
       serviced.condition = "up";
-      armSupportFailure(support, serviced);
+      serviced.wear = freshWear(support.node.mtbf?.value);
       emit({ time: now, type: `${job.job}-end`, node: id, unit: index });
       supportChanged(support);
     });
@@ -611,34 +736,50 @@ export async function simulate(
     const station = stations.get(job.station)!;
     const mttr = station.node.mttr?.value ?? DEFAULT_MTTR_S;
     const id = station.node.id;
+    let unit: StationUnit | undefined;
     let duration: number;
     if (job.job === "repair") {
-      station.condition = "repairing";
+      unit = station.units[job.unit ?? 0]!;
+      unit.condition = "repairing";
       duration = random.exponential(mttr);
     } else {
-      // A station that failed while waiting gets repaired instead. One
-      // stopped for want of support loses nothing by being serviced.
-      if (station.condition !== "up" && station.condition !== "stopped") {
-        return;
-      }
-      halt(station, "preventive");
+      // Units that failed while the job waited get repaired instead.
+      unit = mostWorn(station.units);
+      if (!unit) return;
+      setWorking(unit.wear, false, () => {});
+      haltUnit(unit, "preventive");
       duration = mttr * PREVENTIVE_SHARE;
     }
+    const serviced = unit;
+    const index = station.units.indexOf(serviced);
     freeCrews -= 1;
-    emit({ time: now, type: `${job.job}-start`, node: id });
+    emit({ time: now, type: `${job.job}-start`, node: id, unit: index });
     schedule(now + duration, () => {
       freeCrews += 1;
-      resume(station);
-      emit({ time: now, type: `${job.job}-end`, node: id });
+      serviced.condition = "up";
+      serviced.wear = freshWear(station.node.mtbf?.value);
+      carryOn(station, serviced);
+      emit({ time: now, type: `${job.job}-end`, node: id, unit: index });
     });
   }
 
   // --- decisions ---
+  /** What the station as a whole is doing; a unit out only shows once all are. */
   function statusOf(station: StationState): StationStatus {
-    if (station.condition !== "up") return station.condition;
-    if (station.processing.size > 0) return "running";
-    return station.done.length > 0 ? "blocked" : "idle";
+    const { units } = station;
+    if (units.some((unit) => unit.cycle)) return "running";
+    if (units.every((unit) => unit.condition !== "up")) {
+      for (const condition of ["down", "repairing", "preventive"] as const) {
+        if (units.some((unit) => unit.condition === condition)) return condition;
+      }
+    }
+    if (station.stopped) return "stopped";
+    return units.some((unit) => unit.done) ? "blocked" : "idle";
   }
+
+  /** Most hours any of `units` has worked since its last repair or service. */
+  const wearHours = (units: { wear: WearClock }[]) =>
+    Math.max(0, ...units.map(({ wear }) => wornNow(wear))) / 3600;
 
   /** The worst of its units: a failure outranks a repair, a repair a service. */
   function supportStatus(support: SupportState): StationStatus {
@@ -663,8 +804,11 @@ export async function simulate(
         id: station.node.id,
         name: station.node.name,
         status: statusOf(station),
-        busyUnits: station.processing.size,
-        units: station.units,
+        busyUnits: station.units.filter((unit) => unit.cycle).length,
+        unitsDown: station.units.filter((unit) => unit.condition !== "up")
+          .length,
+        units: station.units.length,
+        wearHours: wearHours(station.units),
       })),
       buffers: [...buffers].map(([id, buffer]) => ({
         id,
@@ -687,6 +831,7 @@ export async function simulate(
           .length,
         units: support.units.length,
         neededBy: support.neededBy.map(name),
+        wearHours: wearHours(support.units),
       })),
     };
   }
@@ -763,8 +908,7 @@ export async function simulate(
     const servicing: TickAction[] = [{ type: "none" }];
     const queued = (id: string) => jobs.some((job) => job.station === id);
     for (const station of stations.values()) {
-      const healthy =
-        station.condition === "up" || station.condition === "stopped";
+      const healthy = station.units.some(({ condition }) => condition === "up");
       if (healthy && station.node.mtbf && !queued(station.node.id)) {
         servicing.push({ type: "preventive", station: station.node.id });
       }
@@ -797,10 +941,8 @@ export async function simulate(
 
   // --- run ---
   for (const id of sources.keys()) scheduleArrival(id);
-  for (const station of stations.values()) armFailure(station);
-  for (const support of supports.values()) {
-    for (const unit of support.units) armSupportFailure(support, unit);
-  }
+  // A source that needs support equipment draws on it from the start.
+  refreshWear();
   const tickInterval = config.tickInterval ?? 0;
   if (tickInterval > 0) {
     const tick = () => {
@@ -823,6 +965,7 @@ export async function simulate(
     }
     await dispatchCrews();
     settle();
+    refreshWear();
     for (const station of stations.values()) {
       const status = statusOf(station);
       if (status === station.reported) continue;
@@ -848,7 +991,7 @@ export async function simulate(
       wipTime,
       stations: [...stations.values()].map((station) => ({
         id: station.node.id,
-        units: station.units,
+        units: station.units.length,
         busyTime: station.busyTime,
         blockedTime: station.blockedTime,
         downTime: station.downTime,

@@ -1,6 +1,6 @@
 export { averageKpis, simulateDays, spread, type Spread } from "./days";
 
-export { applyDiffs, type GraphDiff } from "./diff";
+export { applyDiffs, type GraphDiff, type NewMachineParams } from "./diff";
 
 export {
   param,
@@ -43,3 +43,9 @@ export {
   type AppliedScenario,
   type Scenario,
 } from "./scenario";
+
+export {
+  EMPTY_PLAYBOOK,
+  playbookPolicy,
+  type Playbook,
+} from "./playbook";

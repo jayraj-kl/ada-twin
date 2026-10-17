@@ -93,15 +93,13 @@ describe("support equipment", () => {
     }
   });
 
-  it("stops nothing when nothing needs it, but still takes crew time", async () => {
+  it("never wears out when nothing needs it", async () => {
     const { kpis, events } = await simulate(
       { nodes: [intake, boilers, dispatch, cabinet()], edges: line },
       { seed: 3, horizon: HORIZON },
     );
     expect(kpis.stations.boilers!.stopped).toBe(0);
-    expect(
-      events.some((e) => e.type === "repair-start" && e.node === "cabinet"),
-    ).toBe(true);
+    expect(events.some((e) => e.type === "failure")).toBe(false);
   });
 
   it("fails unit by unit, and a single unit out stops what needs it", async () => {
@@ -150,14 +148,19 @@ describe("support equipment", () => {
       {
         nodes: [
           intake,
-          { ...boilers, mtbf: param(1200, "s"), mttr: param(2400, "s") },
+          {
+            ...boilers,
+            units: param(2, "units"),
+            mtbf: param(1200, "s"),
+            mttr: param(2400, "s"),
+          },
           dispatch,
           cabinet(),
         ],
         edges: line,
         dependencies: [{ support: "cabinet", neededBy: "boilers" }],
       },
-      { seed: 11, horizon: HORIZON, tickInterval: 1800 },
+      { seed: 1, horizon: HORIZON, tickInterval: 1800 },
       {
         decide: (request) => {
           offered.push(request);
@@ -165,7 +168,8 @@ describe("support equipment", () => {
         },
       },
     );
-    // With one crew, a cabinet that fails mid-repair waits for the boilers.
+    // With one crew, a cabinet that fails while one boiler is under repair
+    // (the other kept it working) waits for that repair to finish.
     const boilersFixed = new Set(
       events.flatMap((e) =>
         e.type === "repair-end" && e.node === "boilers" ? [e.time] : [],

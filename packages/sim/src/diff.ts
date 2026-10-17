@@ -1,4 +1,14 @@
-import type { FactoryGraph, Param } from "./graph";
+import type { FactoryGraph, Param, Provenance } from "./graph";
+
+/** The numbers of a machine the plant does not have yet. */
+export interface NewMachineParams {
+  /** Mean seconds of running between failures; omit for one that never fails. */
+  mtbf?: number;
+  /** Mean seconds to repair once a crew starts. */
+  mttr?: number;
+  /** Where the numbers came from: researched estimates, usually. */
+  provenance?: Provenance;
+}
 
 /** One concrete change to a factory, as a report recommendation proposes it. */
 export type GraphDiff =
@@ -15,6 +25,33 @@ export type GraphDiff =
       to: string;
       capacity: number;
     }
+  /** A new kind of machine on the link from `from` to `to`, which it splits in two. */
+  | ({
+      type: "insert-station";
+      id: string;
+      name: string;
+      from: string;
+      to: string;
+      units: number;
+      /** Mean seconds to process one part. */
+      cycleTime: number;
+      cycleTimeVariation?: number;
+      /** Share of finished parts scrapped, 0..1. */
+      scrapRate?: number;
+    } & NewMachineParams)
+  /**
+   * New support equipment, such as a water softener: parts never pass it,
+   * and the stations and sources in `neededBy` stop while it is down. It
+   * pays off only through the changes it comes with, such as fewer boiler
+   * failures.
+   */
+  | ({
+      type: "add-support";
+      id: string;
+      name: string;
+      units: number;
+      neededBy: string[];
+    } & NewMachineParams)
   | {
       type: "set-param";
       node: string;
@@ -46,8 +83,83 @@ export function applyDiffs(
     provenance: { kind: "user" as const },
   });
 
+  const fresh = (id: string) => {
+    if (next.nodes.some((node) => node.id === id)) {
+      throw new Error(`There is already a node "${id}"`);
+    }
+  };
+  // New equipment's numbers keep where they came from; they are estimates,
+  // not the user's decisions.
+  const estimate = (
+    value: number | undefined,
+    unit: string,
+    provenance: Provenance = { kind: "assumed" },
+  ) => (value === undefined ? undefined : { value, unit, provenance });
+
   for (const diff of diffs) {
-    if (diff.type === "add-units") {
+    if (diff.type === "insert-station") {
+      fresh(diff.id);
+      const link = next.edges.findIndex(
+        ({ from, to }) => from === diff.from && to === diff.to,
+      );
+      if (link < 0) {
+        throw new Error(`No link from "${diff.from}" to "${diff.to}"`);
+      }
+      if (!(diff.cycleTime > 0) || !(diff.units >= 1)) {
+        throw new Error(
+          `"${diff.name}" needs a cycle time and at least one unit`,
+        );
+      }
+      const { share } = next.edges[link]!;
+      next.nodes.push({
+        id: diff.id,
+        kind: "station",
+        name: diff.name,
+        units: set(undefined, diff.units, "units"),
+        cycleTime: estimate(diff.cycleTime, "s", diff.provenance)!,
+        cycleTimeVariation: estimate(
+          diff.cycleTimeVariation,
+          "share",
+          diff.provenance,
+        ),
+        mtbf: estimate(diff.mtbf, "s", diff.provenance),
+        mttr: estimate(diff.mttr, "s", diff.provenance),
+        scrapRate: estimate(diff.scrapRate, "share", diff.provenance),
+      });
+      next.edges.splice(
+        link,
+        1,
+        {
+          from: diff.from,
+          to: diff.id,
+          ...(share === undefined ? {} : { share }),
+        },
+        { from: diff.id, to: diff.to },
+      );
+    } else if (diff.type === "add-support") {
+      fresh(diff.id);
+      if (!(diff.units >= 1)) {
+        throw new Error(`"${diff.name}" needs at least one unit`);
+      }
+      for (const id of diff.neededBy) {
+        const node = find(id);
+        if (node.kind !== "station" && node.kind !== "source") {
+          throw new Error(`"${id}" cannot need support equipment`);
+        }
+      }
+      next.nodes.push({
+        id: diff.id,
+        kind: "support",
+        name: diff.name,
+        units: set(undefined, diff.units, "units"),
+        mtbf: estimate(diff.mtbf, "s", diff.provenance),
+        mttr: estimate(diff.mttr, "s", diff.provenance),
+      });
+      next.dependencies = [
+        ...(next.dependencies ?? []),
+        ...diff.neededBy.map((neededBy) => ({ support: diff.id, neededBy })),
+      ];
+    } else if (diff.type === "add-units") {
       const node = find(diff.station);
       if (node.kind !== "station") {
         throw new Error(`"${diff.station}" is not a station`);
@@ -84,7 +196,11 @@ export function applyDiffs(
       next.edges.splice(
         link,
         1,
-        { from: diff.from, to: diff.id, ...(share === undefined ? {} : { share }) },
+        {
+          from: diff.from,
+          to: diff.id,
+          ...(share === undefined ? {} : { share }),
+        },
         { from: diff.id, to: diff.to },
       );
     } else if (diff.type === "resize-buffer") {

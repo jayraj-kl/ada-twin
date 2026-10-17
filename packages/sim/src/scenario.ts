@@ -21,6 +21,11 @@ export interface Scenario {
   /** Share of maintenance staff absent, 0..1. */
   absenteeism?: number;
   maintenanceCrews?: number;
+  /**
+   * What the crew is told about this scenario, beyond its targets. It changes
+   * how agents decide, not the plant, so `applyScenario` never reads it.
+   */
+  briefing?: string;
   targets?: {
     throughputPerShift?: number;
     maxAverageWip?: number;
