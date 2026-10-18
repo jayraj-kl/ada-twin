@@ -29,3 +29,5 @@ dist-ssr
 
 # downloaded world assets (scripts/fetch-world.ts)
 /public/worlds/
+
+.firebase/
