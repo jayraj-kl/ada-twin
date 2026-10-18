@@ -47,6 +47,14 @@ export {
 } from "./scenario";
 
 export {
+  prepareShift,
+  simulateShiftDays,
+  type ChangeSet,
+  type PreparedShift,
+  type Shift,
+} from "./shift";
+
+export {
   EMPTY_PLAYBOOK,
   playbookPolicy,
   type Playbook,

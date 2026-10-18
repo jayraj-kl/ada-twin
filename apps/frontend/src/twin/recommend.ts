@@ -4,10 +4,9 @@ import {
   type Param,
   type Scenario,
   type Spread,
-  applyDiffs,
   applyScenario,
   averageKpis,
-  simulateDays,
+  simulateShiftDays,
   spread,
 } from "@repo/sim";
 import type { Machine, RunDigest, ScoutKind } from "./api";
@@ -85,28 +84,13 @@ export async function measure(
   run: StoredRun,
   changes: Pick<Change, "diffs" | "extraCrews">[],
 ): Promise<Measured> {
-  // The changes are made to the twin and the scenario then applied to it, as
-  // applying them for good and running the shift does: new machines feel the
-  // heat too, and extra crews are as short-handed as the rest.
-  const applied = applyScenario(
-    applyDiffs(
-      run.graph,
-      changes.flatMap(({ diffs }) => diffs),
-    ),
+  const days = await simulateShiftDays(
     {
-      ...run.scenario,
-      maintenanceCrews:
-        (run.scenario.maintenanceCrews ?? 1) +
-        changes.reduce((sum, { extraCrews }) => sum + extraCrews, 0),
-    },
-  );
-  const days = await simulateDays(
-    applied.graph,
-    {
+      graph: run.graph,
+      scenario: run.scenario,
+      changes,
       seed: run.seed,
-      horizon: applied.horizon,
-      maintenanceCrews: applied.maintenanceCrews,
-      tickInterval: run.tickMinutes * 60,
+      tickMinutes: run.tickMinutes,
     },
     daysOf(run).length,
   );

@@ -272,6 +272,8 @@ export interface DecisionRecord {
 
 /** One finished run of the shift, kept for the replay and the report. */
 export interface StoredRun {
+  /** The server's id for the run, once it is kept with the project. */
+  id?: string;
   seed: number;
   horizon: number;
   maintenanceCrews: number;

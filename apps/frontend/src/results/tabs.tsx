@@ -28,7 +28,7 @@ import {
   signedAverage,
 } from "./format";
 import { usePlantUnit } from "@/scenario/plant";
-import { PickedChanges, type Picks, type Trial } from "./PickedChanges";
+import { PickedChanges, type Picks, type TrialView } from "./PickedChanges";
 
 /** One saved state of the redesign. */
 export interface RedesignVersion {
@@ -306,7 +306,7 @@ export function ResultsTab({
   /** What each change not picked adds on top of the picked ones. */
   onTop: Record<string, number | "failed">;
   picks: Picks;
-  trial: Trial;
+  trial: TrialView;
   /** Takes a picked change back out. */
   onRemove: (change: MeasuredChange) => void;
   /** What the AI found the plant is missing; null before anyone asked. */

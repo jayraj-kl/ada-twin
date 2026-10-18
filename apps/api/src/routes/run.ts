@@ -1,9 +1,7 @@
 import {
-  type AgentSpec,
   PERSONAS,
   ROLES,
   createAgentPolicy,
-  type DecisionRecord,
   createGeminiModel,
   type DesignMessage,
   type DigestLine,
@@ -15,71 +13,48 @@ import {
 import {
   type FactoryGraph,
   type Kpis,
-  type Policy,
   type Scenario,
-  type SimEvent,
-  applyScenario,
-  defaultPolicy,
-  simulate,
-  simulateDays,
   validateGraph,
 } from "@repo/sim";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
-import { insertRun } from "@repo/db/queries/insert";
-import { updateRun } from "@repo/db/queries/update";
 import { since } from "@repo/logger";
-import { randomUUID } from "node:crypto";
 import { log } from "../logging";
-import { projectPath, storageConfigured, writeJson } from "../storage";
+import {
+  type ShiftModels,
+  type ShiftRequest,
+  goal,
+  streamShift,
+} from "../shift/runner";
+import { cloudRunStore } from "../shift/store";
+
+export { goal };
 
 const MAX_AGENTS = 6;
 // Standard-rules days averaged per run; each takes well under a second.
 const MAX_DAYS = 60;
+// The picks a run with changes was made for, as the page names them.
+const MAX_TRIAL_KEY = 1_000_000;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// What the run view replays; per-part start and finish events are left out.
-const REPLAYED: SimEvent["type"][] = [
-  "created",
-  "completed",
-  "scrap",
-  "status",
-  "failure",
-  "repair-start",
-  "repair-end",
-  "preventive-start",
-  "preventive-end",
-];
 
-interface RunBody {
-  graph: FactoryGraph;
-  scenario: Scenario;
-  agents: AgentSpec[];
-  seed: number;
-  tickMinutes: number;
-  /** Days the standard-rules baseline is averaged over. */
-  days: number;
-  /** The project to save the finished run in; nothing is saved without it. */
-  projectId?: string;
-  /**
-   * Set when the run tries the picked changes on a copy of the twin: which
-   * picks it was made for. It is kept as the project's run with changes,
-   * never as its latest run.
-   */
-  trialKey?: string;
-}
+/** The agents decide and the playbook is written by Gemini. */
+const GEMINI_MODELS: ShiftModels = {
+  agents: (options) => createAgentPolicy(options),
+  writePlaybook: (input) => writePlaybook(createGeminiModel(), input),
+};
 
-// A run with changes is kept under one name per project, replaced each time.
-export const trialPath = (projectId: string) =>
-  projectPath(projectId, "runs", "trial.json");
-// The picks a run with changes was made for, as the page writes them.
-const MAX_TRIAL_KEY = 200_000;
-
-function parseBody(body: unknown): RunBody {
-  const { graph, scenario, agents, seed, tickMinutes, days, projectId, trialKey } =
-    (body ?? {}) as Partial<RunBody>;
-  const fail = (message: string) => {
+/**
+ * The shift the page asks for: { graph, scenario, agents, seed, tickMinutes,
+ * days, projectId?, trial?: { key } }. A run with `trial` is kept as the
+ * project's run with changes for those picks, never as its latest run; a
+ * `trial` without a usable key is refused rather than kept as the latest.
+ */
+function parseBody(body: unknown): ShiftRequest {
+  const { graph, scenario, agents, seed, tickMinutes, days, projectId, trial } =
+    (body ?? {}) as Partial<ShiftRequest> & { trial?: { key?: unknown } };
+  const fail = (message: string): never => {
     throw new HTTPException(400, { message });
   };
   if (!Array.isArray(graph?.nodes) || !Array.isArray(graph?.edges)) {
@@ -103,6 +78,14 @@ function parseBody(body: unknown): RunBody {
       fail("Each agent needs an id, a name, a role and a personality");
     }
   }
+  if (
+    trial !== undefined &&
+    (typeof trial?.key !== "string" ||
+      !trial.key ||
+      trial.key.length > MAX_TRIAL_KEY)
+  ) {
+    fail("Expected trial: { key } naming the picked changes");
+  }
   return {
     graph: graph!,
     scenario: scenario!,
@@ -114,32 +97,10 @@ function parseBody(body: unknown): RunBody {
       typeof projectId === "string" && UUID.test(projectId)
         ? projectId
         : undefined,
-    trialKey:
-      typeof trialKey === "string" && trialKey.length <= MAX_TRIAL_KEY
-        ? trialKey
-        : undefined,
+    purpose: trial
+      ? { kind: "trial", key: trial.key as string }
+      : { kind: "latest" },
   };
-}
-
-// The briefing comes from the page; this much is plenty for a few sentences.
-const MAX_BRIEFING = 1000;
-
-export function goal({ targets, shiftHours, briefing }: Scenario): string {
-  const wanted = [
-    targets?.throughputPerShift &&
-      `ship at least ${targets.throughputPerShift} parts in the ${shiftHours}-hour shift`,
-    targets?.maxAverageWip &&
-      `keep work in progress under ${targets.maxAverageWip} parts`,
-    targets?.maxDownShare &&
-      `keep every station down less than ${Math.round(targets.maxDownShare * 100)}% of the time`,
-  ].filter(Boolean);
-  const aim =
-    wanted.length > 0
-      ? `${wanted.join(", ")}.`.replace(/^./, (first) => first.toUpperCase())
-      : "Ship as many good parts as possible this shift.";
-  const told =
-    typeof briefing === "string" ? briefing.trim().slice(0, MAX_BRIEFING) : "";
-  return told ? `${aim} Briefing: ${told}` : aim;
 }
 
 export const run = new Hono();
@@ -164,225 +125,25 @@ run.onError((error, c) => {
  * with a `problem` if it could not be written.
  */
 run.post("/", async (c) => {
-  const body = parseBody(await c.req.json().catch(() => null));
-  const applied = applyScenario(body.graph, body.scenario);
-  const config = {
-    seed: body.seed,
-    horizon: applied.horizon,
-    maintenanceCrews: applied.maintenanceCrews,
-    tickInterval: body.tickMinutes * 60,
-  };
-
+  const request = parseBody(await c.req.json().catch(() => null));
   c.header("Content-Type", "application/x-ndjson");
   return stream(c, async (out) => {
-    const send = (line: unknown) => out.writeln(JSON.stringify(line));
-    const started = performance.now();
     let aborted = false;
+    const started = performance.now();
     out.onAbort(() => {
       aborted = true;
       log.info("shift cancelled: the page stopped listening", {
         ms: since(started),
       });
     });
-    const tally = { decisions: 0, fallbacks: 0 };
-    log.info("shift started", {
-      scenario: body.scenario.name,
-      shiftHours: body.scenario.shiftHours,
-      stations: body.graph.nodes.length,
-      agents: body.agents.map(({ name, role }) => `${name} (${role})`),
-      days: body.days,
-      seed: body.seed,
-      goal: goal(body.scenario),
-    });
-
-    try {
-      const days = await simulateDays(applied.graph, config, body.days);
-      await send({
-        type: "start",
-        horizon: applied.horizon,
-        maintenanceCrews: applied.maintenanceCrews,
-        adjustments: applied.adjustments,
-        baseline: days[0]!,
-        days,
-      });
-
-      let decide: Policy["decide"] = defaultPolicy.decide;
-      const records: DecisionRecord[] = [];
-      if (body.agents.length > 0) {
-        const agents = createAgentPolicy({
-          agents: body.agents,
-          goal: goal(body.scenario),
-          onDecision: (record) => {
-            tally.decisions++;
-            if (record.fallback) tally.fallbacks++;
-            records.push(record);
-            void send({ type: "decision", record });
-          },
-        });
-        decide = (request) => {
-          // Nobody is watching any more, so stop paying for decisions.
-          if (aborted) throw new Error("The run was cancelled");
-          return agents.decide(request);
-        };
-      }
-      // The shift only takes real time while it waits on a decision, so the
-      // events so far go out just before each one: the page shows the floor
-      // as the agents see it.
-      let unsent: SimEvent[] = [];
-      const policy: Policy = {
-        decide(request) {
-          if (unsent.length > 0) {
-            void send({ type: "events", events: unsent });
-            unsent = [];
-          }
-          return decide(request);
-        },
-      };
-      const operated = await simulate(
-        applied.graph,
-        {
-          ...config,
-          onEvent: (event) => {
-            if (REPLAYED.includes(event.type)) unsent.push(event);
-          },
-        },
-        policy,
-      );
-      log.info("shift finished", {
-        completed: operated.kpis.completed,
-        scrapped: operated.kpis.scrapped,
-        bottleneck: operated.kpis.bottleneck,
-        baselineCompleted: days[0]!.completed,
-        ...tally,
-        ms: since(started),
-      });
-      const replayed = operated.events.filter(({ type }) =>
-        REPLAYED.includes(type),
-      );
-      // Kept with the project, so the results step can load it again on any
-      // device. A run that cannot be kept is still shown.
-      let runId: string | undefined;
-      // A run with changes, as the page shows it, so a reload keeps the picks
-      // tested.
-      const trial =
-        body.projectId && body.trialKey && storageConfigured()
-          ? {
-              path: trialPath(body.projectId),
-              key: body.trialKey,
-              run: {
-                seed: body.seed,
-                horizon: applied.horizon,
-                maintenanceCrews: applied.maintenanceCrews,
-                tickMinutes: body.tickMinutes,
-                scenario: body.scenario,
-                graph: body.graph,
-                agents: body.agents,
-                adjustments: applied.adjustments,
-                baseline: days[0]!,
-                days,
-                kpis: operated.kpis,
-                events: replayed,
-                decisions: records,
-              } as Record<string, unknown>,
-            }
-          : null;
-      if (trial) {
-        const saving = performance.now();
-        await writeJson(trial.path, { key: trial.key, run: trial.run }).then(
-          () => log.info("trial saved", { events: replayed.length, ms: since(saving) }),
-          (error: unknown) => log.warn("trial not saved", { error, ms: since(saving) }),
-        );
-      } else if (body.projectId && storageConfigured() && process.env.DATABASE_URL) {
-        const saving = performance.now();
-        try {
-          runId = randomUUID();
-          const eventsPath = projectPath(
-            body.projectId,
-            "runs",
-            runId,
-            "events.json",
-          );
-          await writeJson(eventsPath, replayed);
-          await insertRun({
-            id: runId,
-            projectId: body.projectId,
-            status: "finished",
-            seed: body.seed,
-            horizon: applied.horizon,
-            maintenanceCrews: applied.maintenanceCrews,
-            tickMinutes: body.tickMinutes,
-            graph: body.graph,
-            scenario: body.scenario,
-            agents: body.agents,
-            adjustments: applied.adjustments,
-            baseline: days[0]!,
-            days,
-            kpis: operated.kpis,
-            decisions: records,
-            eventsPath,
-          });
-          log.info("run saved", { run: runId, events: replayed.length, ms: since(saving) });
-        } catch (error) {
-          log.warn("run not saved", { error, ms: since(saving) });
-          runId = undefined;
-        }
-      }
-      await send({
-        type: "done",
-        kpis: operated.kpis,
-        events: replayed,
-        runId,
-      });
-
-      // The crew's way of working as fixed rules, so the page can replay it
-      // over many days. The shift is already shown, so failing here only
-      // costs the averages, not the run.
-      if (records.length > 0 && !aborted) {
-        const writing = performance.now();
-        try {
-          const playbook = await writePlaybook(createGeminiModel(), {
-            graph: body.graph,
-            goal: goal(body.scenario),
-            decisions: records,
-          });
-          log.info("playbook written", {
-            repairOrder: playbook.repairOrder.length,
-            release: Object.keys(playbook.release).length,
-            service: Object.keys(playbook.serviceEveryHours).length,
-            ms: since(writing),
-          });
-          if (runId) {
-            await updateRun(runId, { playbook }).catch((error: unknown) =>
-              log.warn("playbook not saved", { run: runId, error }),
-            );
-          }
-          if (trial) {
-            await writeJson(trial.path, {
-              key: trial.key,
-              run: { ...trial.run, playbook },
-            }).catch((error: unknown) =>
-              log.warn("trial playbook not saved", { error }),
-            );
-          }
-          await send({ type: "playbook", playbook });
-        } catch (error) {
-          if (aborted) return;
-          log.warn("playbook failed", { error, ms: since(writing) });
-          await send({
-            type: "playbook",
-            playbook: null,
-            problem: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    } catch (error) {
-      if (aborted) return;
-      log.error("shift failed", { error, ...tally, ms: since(started) });
-      await send({
-        type: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
+    await streamShift(
+      request,
+      { store: cloudRunStore(), models: GEMINI_MODELS },
+      async (line) => {
+        await out.writeln(JSON.stringify(line));
+      },
+      () => aborted,
+    );
   });
 });
 

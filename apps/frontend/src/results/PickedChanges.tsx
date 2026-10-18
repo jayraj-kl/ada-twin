@@ -13,7 +13,7 @@ export interface Picks {
 }
 
 /** The picked changes run with the crew on a copy of the twin. */
-export interface Trial {
+export interface TrialView {
   /** Its outcome, while the picks are still those it ran with. */
   after: { run: StoredRun; rules: Kpis[]; agents: Kpis[] | null } | null;
   running: boolean;
@@ -38,7 +38,7 @@ export function PickedChanges({
   over = false,
 }: {
   picks: Picks;
-  trial: Trial;
+  trial: TrialView;
   hasAgents: boolean;
   /** Drawn over the world, on its dark glass. */
   over?: boolean;

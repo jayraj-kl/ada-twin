@@ -9,6 +9,7 @@ import type {
 } from "@repo/sim";
 import { API, modelHeaders } from "@/lib/models";
 import type { DecisionRecord } from "./project";
+import type { RunRequest } from "./shift-run";
 
 /** A request to the API, with the models picked in this browser. */
 function apiFetch(path: string, init: RequestInit = {}) {
@@ -153,7 +154,7 @@ export type RunLine =
  * baseline first, each agent decision as it is made, then the finished run.
  */
 export async function streamRun(
-  body: unknown,
+  body: RunRequest,
   onLine: (line: RunLine) => void,
   signal: AbortSignal,
 ): Promise<void> {

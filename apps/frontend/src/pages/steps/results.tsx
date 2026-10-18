@@ -4,11 +4,11 @@ import {
   type Scenario,
   type SimEvent,
   applyDiffs,
-  applyScenario,
   defaultPolicy,
   playbookPolicy,
+  prepareShift,
   simulate,
-  simulateDays,
+  simulateShiftDays,
 } from "@repo/sim";
 import {
   ArrowRightIcon,
@@ -44,7 +44,12 @@ import {
 } from "@/results/floor";
 import { costKey, signed } from "@/results/format";
 import { usePlantScenario } from "@/scenario/plant";
-import { PickedChanges, type Picks, type Trial as TrialState } from "@/results/PickedChanges";
+import { PickedChanges, type Picks, type TrialView } from "@/results/PickedChanges";
+import {
+  type Trial,
+  redesignStatus,
+  runId,
+} from "@/results/redesign-status";
 import { ShiftCharts } from "@/results/ShiftCharts";
 import { ChangesTab, type RedesignVersion, ResultsTab } from "@/results/tabs";
 import { type Series, timelineOf } from "@/results/timeline";
@@ -58,6 +63,7 @@ import {
   scoutEquipment,
   streamRun,
 } from "@/twin/api";
+import { runShift } from "@/twin/shift-run";
 import { EMPTY_FLOW, FLOW_KEY, type Flow, flowProblems } from "@/twin/flow";
 import {
   ACCEPTED_KEY,
@@ -110,44 +116,18 @@ interface Scouted {
   note: string;
 }
 
-/** JSON with object keys sorted, so a value saved and read back keys the same. */
-function stableJson(value: unknown): string {
-  return JSON.stringify(value, (_, item: unknown) =>
-    item && typeof item === "object" && !Array.isArray(item)
-      ? Object.fromEntries(
-          Object.entries(item as Record<string, unknown>).sort(([a], [b]) =>
-            a < b ? -1 : a > b ? 1 : 0,
-          ),
-        )
-      : item,
-  );
-}
-
-const runId = (run: StoredRun) =>
-  `${run.seed}:${run.events.length}:${run.kpis.completed}:${run.decisions.length}`;
 /** The crew's playbook replayed on each of the run's days. */
 function replayCrew(run: StoredRun & { playbook: NonNullable<StoredRun["playbook"]> }) {
-  const plant = applyScenario(run.graph, run.scenario);
-  return simulateDays(
-    plant.graph,
+  return simulateShiftDays(
     {
+      graph: run.graph,
+      scenario: run.scenario,
       seed: run.seed,
-      horizon: plant.horizon,
-      maintenanceCrews: plant.maintenanceCrews,
-      tickInterval: run.tickMinutes * 60,
+      tickMinutes: run.tickMinutes,
     },
     daysOf(run).length,
     playbookPolicy(run.playbook),
   );
-}
-
-/** The picked changes, run for real on a copy of the twin. */
-interface Trial {
-  /** The run and the picks it was made for. */
-  key: string;
-  run: StoredRun;
-  /** Its crew's playbook replayed on each day, once written. */
-  crewDays: Kpis[] | null;
 }
 
 // Simulated seconds played per real second; the second plays an eight-hour
@@ -326,14 +306,6 @@ export default function ResultsPage() {
     [graph, flow.links, flow.needs],
   );
   const ready = machines.length > 0 && problems.length === 0;
-  // The twin or scenario changed since the run, e.g. by applying a redesign.
-  // Compared with keys sorted: the run comes back from the database with its
-  // keys in another order than the page builds them.
-  const stale =
-    run !== null &&
-    machinesLoaded &&
-    (stableJson(run.graph) !== stableJson(graph) ||
-      stableJson(run.scenario) !== stableJson(scenario));
 
   useEffect(() => {
     if (run) setSeed(run.seed);
@@ -347,19 +319,12 @@ export default function ResultsPage() {
     setView("baseline");
     setShowDecisions(true);
     if (!scenarioSaved) setScenario(scenario);
-    const opening = { horizon: scenario.shiftHours * 3600 };
-    const state: Live = { horizon: opening.horizon, decisions: [], events: [] };
-    setLive({ ...state });
+    setLive({ horizon: scenario.shiftHours * 3600, decisions: [], events: [] });
     const controller = new AbortController();
     cancel.current = controller;
-    let started: Pick<
-      StoredRun,
-      "horizon" | "maintenanceCrews" | "adjustments" | "baseline" | "days"
-    > | null = null;
-    let finished: StoredRun | null = null;
     setPlaybookProblem("");
     try {
-      await streamRun(
+      await runShift(
         {
           graph,
           scenario,
@@ -370,42 +335,22 @@ export default function ResultsPage() {
           // The API keeps the finished run with the project.
           projectId,
         },
-        (line) => {
-          if (line.type === "start") {
-            started = line;
-            state.horizon = line.horizon;
-          } else if (line.type === "decision") {
-            state.decisions = [...state.decisions, line.record];
-          } else if (line.type === "events") {
-            state.events = [...state.events, ...line.events];
-          } else if (line.type === "error") {
-            throw new Error(line.message);
-          } else if (line.type === "playbook") {
-            // Written after the shift, while its replay is already playing.
-            if (finished) setRun({ ...finished, playbook: line.playbook });
-            setPlaybookProblem(line.problem ?? "");
-            setWritingPlaybook(false);
-            return;
-          } else if (line.type === "done" && started) {
-            finished = {
-              ...started,
-              seed,
-              tickMinutes: crew.tickMinutes,
-              scenario,
-              graph,
-              agents: crew.agents,
-              kpis: line.kpis,
-              events: line.events,
-              decisions: state.decisions,
-            };
+        streamRun,
+        {
+          onProgress: (progress) => setLive(progress),
+          onFinished: (finished) => {
             setRun(finished);
             setLive(null);
             setWritingPlaybook(crew.agents.length > 0);
             setTime(0);
             setPlaying(true);
-            return;
-          }
-          setLive({ ...state });
+          },
+          // Written after the shift, while its replay is already playing.
+          onPlaybook: (withPlaybook, problem) => {
+            setRun(withPlaybook);
+            setPlaybookProblem(problem);
+            setWritingPlaybook(false);
+          },
         },
         controller.signal,
       );
@@ -453,14 +398,25 @@ export default function ResultsPage() {
   const [trialProblem, setTrialProblem] = useState("");
   const trialCancel = useRef<AbortController | null>(null);
   useEffect(() => () => trialCancel.current?.abort(), []);
-  const trialKey = run
-    ? stableJson([
-        runId(run),
-        kept.map(({ diffs, extraCrews }) => [diffs, extraCrews]),
-      ])
-    : "";
-  const trialCurrent =
-    kept.length > 0 && trial !== null && trial.key === trialKey;
+  const status = redesignStatus({
+    run,
+    now: {
+      graph,
+      scenario,
+      seed,
+      days,
+      agents: crew.agents,
+      tickMinutes: crew.tickMinutes,
+    },
+    twinLoaded: machinesLoaded,
+    picks: kept,
+    trial,
+    running: live
+      ? { decisions: trialProgress ?? 0, trial: Boolean(live.trial) }
+      : null,
+    unit,
+  });
+  const { stale, trialKey, trialCurrent, tested, worse, offer } = status;
 
   // The run with changes kept with the project, so a reload keeps the picks
   // tested. One made on this page meanwhile is newer.
@@ -540,17 +496,13 @@ export default function ResultsPage() {
     setStandard(null);
     if (!charted || !withAgents) return;
     let cancelled = false;
-    const plant = applyScenario(charted.graph, charted.scenario);
-    simulate(
-      plant.graph,
-      {
-        seed: charted.seed,
-        horizon: plant.horizon,
-        maintenanceCrews: plant.maintenanceCrews,
-        tickInterval: charted.tickMinutes * 60,
-      },
-      defaultPolicy,
-    ).then(
+    const plant = prepareShift({
+      graph: charted.graph,
+      scenario: charted.scenario,
+      seed: charted.seed,
+      tickMinutes: charted.tickMinutes,
+    });
+    simulate(plant.graph, plant.config, defaultPolicy).then(
       (result) => !cancelled && setStandard(timelineOf(result.events).shipped),
       () => {},
     );
@@ -755,66 +707,42 @@ export default function ResultsPage() {
     const controller = new AbortController();
     trialCancel.current = controller;
     const key = trialKey;
-    // The twin as applying the picks would leave it; nothing is saved.
+    // The twin as applying the picks would leave it; your twin is not touched.
     const next = applyToTwin({ machines, flow, scenario: run.scenario }, kept);
-    const body = {
+    const trialRun = {
       graph: buildGraph(next.machines, next.flow),
       scenario: next.scenario,
-      agents: run.agents,
-      seed: run.seed,
-      tickMinutes: run.tickMinutes,
-      days: daysOf(run).length,
-      // Kept as the project's run with changes, not as its latest run.
-      projectId,
-      trialKey: key,
     };
     setTrialProblem("");
     setTrialProgress(0);
     setRunProblem("");
     setPlaying(false);
     setShowDecisions(true);
-    const state: Live = {
-      horizon: body.scenario.shiftHours * 3600,
+    setLive({
+      horizon: trialRun.scenario.shiftHours * 3600,
       decisions: [],
       events: [],
-      trial: { graph: body.graph, scenario: body.scenario },
-    };
-    setLive({ ...state });
-    let started: Pick<
-      StoredRun,
-      "horizon" | "maintenanceCrews" | "adjustments" | "baseline" | "days"
-    > | null = null;
-    let finished: StoredRun | null = null;
-    const decisions: StoredRun["decisions"] = [];
+      trial: trialRun,
+    });
     try {
-      await streamRun(
-        body,
-        (line) => {
-          if (line.type === "start") {
-            started = line;
-            state.horizon = line.horizon;
-          } else if (line.type === "events") {
-            state.events = [...state.events, ...line.events];
-            setLive({ ...state });
-          } else if (line.type === "decision") {
-            decisions.push(line.record);
-            state.decisions = [...decisions];
-            setLive({ ...state });
-            setTrialProgress(decisions.length);
-          } else if (line.type === "error") {
-            throw new Error(line.message);
-          } else if (line.type === "done" && started) {
-            finished = {
-              ...started,
-              seed: body.seed,
-              tickMinutes: body.tickMinutes,
-              scenario: body.scenario,
-              graph: body.graph,
-              agents: body.agents,
-              kpis: line.kpis,
-              events: line.events,
-              decisions,
-            };
+      await runShift(
+        {
+          ...trialRun,
+          agents: run.agents,
+          seed: run.seed,
+          tickMinutes: run.tickMinutes,
+          days: daysOf(run).length,
+          // Kept as the project's run with changes, not as its latest run.
+          projectId,
+          trial: { key },
+        },
+        streamRun,
+        {
+          onProgress: (progress) => {
+            setLive({ ...progress, trial: trialRun });
+            setTrialProgress(progress.decisions.length);
+          },
+          onFinished: (finished) => {
             setTrial({ key, run: finished, crewDays: null });
             setTrialProgress(null);
             // Replayed on the redesign, from the start of the shift.
@@ -822,16 +750,20 @@ export default function ResultsPage() {
             setView("redesign");
             setTime(0);
             setPlaying(true);
-          } else if (line.type === "playbook" && finished && line.playbook) {
-            const withPlaybook = { ...finished, playbook: line.playbook };
-            void replayCrew(withPlaybook).then((crewDays) =>
+          },
+          onPlaybook: (withPlaybook) => {
+            if (!withPlaybook.playbook) return;
+            void replayCrew({
+              ...withPlaybook,
+              playbook: withPlaybook.playbook,
+            }).then((crewDays) =>
               setTrial((current) =>
                 current?.key === key
                   ? { ...current, run: withPlaybook, crewDays }
                   : current,
               ),
             );
-          }
+          },
         },
         controller.signal,
       );
@@ -1222,27 +1154,7 @@ export default function ResultsPage() {
       ? kept.reduce((sum, { id }) => sum + (alone[id] as number), 0)
       : null,
   };
-  // What the run with changes shipped less than the plant as it is, if it
-  // did: on standard rules over the days, or with the agents on the shift.
-  const worse = (() => {
-    if (!run || !trialCurrent) return "";
-    const mean = (days: Kpis[]) =>
-      days.reduce((sum, { completed }) => sum + completed, 0) / days.length;
-    const lost = (by: number, how: string) =>
-      by >= 0.5
-        ? `${Math.round(by * 10) / 10} fewer ${unit} a shift ${how}`
-        : "";
-    const losses = [
-      lost(mean(daysOf(run)) - mean(daysOf(trial!.run)), "on standard rules"),
-      ...(run.agents.length > 0
-        ? [lost(run.kpis.completed - trial!.run.kpis.completed, "with your agents")]
-        : []),
-    ].filter(Boolean);
-    return losses.length > 0
-      ? `In the run these changes shipped ${losses.join(" and ")}`
-      : "";
-  })();
-  const trialState: TrialState = {
+  const trialState: TrialView = {
     after: trialCurrent
       ? {
           run: trial!.run,
@@ -1252,10 +1164,8 @@ export default function ResultsPage() {
       : null,
     running: trialProgress !== null,
     decisions: trialProgress ?? 0,
-    outdated: kept.length > 0 && trial !== null && !trialCurrent,
-    blocked: stale
-      ? "Your twin has changed since this run: run the shift again first."
-      : "",
+    outdated: status.outdated,
+    blocked: status.blocked,
     problem: trialProblem,
   };
   const suggestionRows = suggestions?.map((change) => ({
@@ -1283,38 +1193,6 @@ export default function ResultsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [showDecisions, sheet]);
 
-  // Picks count as tested once a run with exactly them has finished on the
-  // twin as it is; only then can they be applied.
-  const tested = trialCurrent && !stale;
-  // The one run button is offered only when running would show something
-  // new. Untested picks come first, whatever the view, so picking a change
-  // lights it up. Picks are tried on the run's twin, so once the twin has
-  // changed the shift itself is run again first.
-  const runsPicks = Boolean(run) && !stale && kept.length > 0 && !tested;
-  // The shift as it would run now differs from the run shown: the twin, the
-  // seed, the days averaged or the crew changed.
-  const runChanges = run
-    ? [
-        stale && "twin",
-        seed !== run.seed && "seed",
-        days !== daysOf(run).length && "days",
-        (crew.tickMinutes !== run.tickMinutes ||
-          stableJson(crew.agents) !== stableJson(run.agents)) &&
-          "crew",
-      ].filter((reason): reason is string => Boolean(reason))
-    : [];
-  const offerRun = Boolean(live) || !run || runsPicks || runChanges.length > 0;
-  const runLabel = live
-    ? trialState.running && run?.agents.length
-      ? `Running… ${trialState.decisions} ${trialState.decisions === 1 ? "decision" : "decisions"}`
-      : "Running…"
-    : runsPicks
-      ? trialState.outdated
-        ? "Run with the new picks"
-        : "Run with changes"
-      : run
-        ? `Run again · ${runChanges[0]} changed`
-        : "Run the shift";
   const runDisabled = !ready || Boolean(live);
   const chatDisabled = !run
     ? "Run the shift first, then redesign it here"
@@ -1538,29 +1416,19 @@ export default function ResultsPage() {
                 </span>
               </>
             )}
-            {offerRun && (
+            {offer && (
               <span
                 title={
-                  !ready
-                    ? "Finish the twin's material flow first"
-                    : runsPicks
-                      ? "Run the shift with the picked changes, on a copy of your twin"
-                      : runChanges.length > 0
-                        ? `Changed since this run: ${runChanges.join(", ")}.${
-                            stale && kept.length > 0
-                              ? " Run it again, then run with your changes."
-                              : ""
-                          }`
-                        : undefined
+                  !ready ? "Finish the twin's material flow first" : offer.why
                 }
               >
                 <button
                   className={cn(ui.button, "h-9", ui.primary)}
                   disabled={runDisabled}
-                  onClick={runsPicks ? () => void runTrial() : start}
+                  onClick={offer.does === "picks" ? () => void runTrial() : start}
                 >
-                  {run && !runsPicks ? <RotateCcwIcon /> : <PlayIcon />}{" "}
-                  {runLabel}
+                  {run && offer.does === "shift" ? <RotateCcwIcon /> : <PlayIcon />}{" "}
+                  {offer.label}
                 </button>
               </span>
             )}

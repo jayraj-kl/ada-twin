@@ -20,7 +20,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { log } from "../logging";
-import { trialPath } from "./run";
+import { cloudRunStore } from "../shift/store";
 import {
   deleteFile,
   deleteProjectFiles,
@@ -386,17 +386,13 @@ projects.delete("/:id/documents/:documentId", async (c) => {
  */
 projects.get("/:id/runs/trial", async (c) => {
   const id = projectId(c.req.param("id"));
-  if (!storageConfigured()) return c.json({ trial: null });
-  const trial = await readJson<{ key: string; run: Record<string, unknown> }>(
-    trialPath(id),
-  );
-  return c.json({ trial });
+  return c.json({ trial: (await cloudRunStore()?.trial(id)) ?? null });
 });
 
 /** Forgets the run with changes, once they are applied. */
 projects.delete("/:id/runs/trial", async (c) => {
   const id = projectId(c.req.param("id"));
-  if (storageConfigured()) await deleteFile(trialPath(id));
+  await cloudRunStore()?.forgetTrial(id);
   return c.body(null, 204);
 });
 
@@ -406,26 +402,5 @@ projects.delete("/:id/runs/trial", async (c) => {
  */
 projects.get("/:id/runs/latest", async (c) => {
   const id = projectId(c.req.param("id"));
-  const row = await selectLatestRun(id);
-  if (!row) return c.json({ run: null });
-  const events = row.eventsPath ? await readJson<unknown[]>(row.eventsPath) : null;
-  return c.json({
-    run: {
-      id: row.id,
-      seed: row.seed,
-      horizon: row.horizon,
-      maintenanceCrews: row.maintenanceCrews,
-      tickMinutes: row.tickMinutes,
-      scenario: row.scenario,
-      graph: row.graph,
-      agents: row.agents,
-      adjustments: row.adjustments,
-      baseline: row.baseline,
-      days: row.days ?? undefined,
-      kpis: row.kpis,
-      events: events ?? [],
-      decisions: row.decisions,
-      playbook: row.playbook ?? undefined,
-    },
-  });
+  return c.json({ run: (await cloudRunStore()?.latest(id)) ?? null });
 });

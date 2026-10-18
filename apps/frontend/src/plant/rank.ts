@@ -1,10 +1,8 @@
 import {
   type Kpis,
   type Scenario,
-  applyDiffs,
-  applyScenario,
   averageKpis,
-  simulateDays,
+  simulateShiftDays,
 } from "@repo/sim";
 import type { CostEstimate } from "@/twin/api";
 import type { SavedMachine, StoredRun } from "@/twin/project";
@@ -75,20 +73,13 @@ export async function measureDays(
   run: AppliedRedesign["run"],
   changes: Measured[],
 ): Promise<Kpis> {
-  const applied = applyScenario(run.graph, run.scenario);
-  const graph = applyDiffs(
-    applied.graph,
-    changes.flatMap(({ diffs }) => diffs),
-  );
-  const days = await simulateDays(
-    graph,
+  const days = await simulateShiftDays(
     {
+      graph: run.graph,
+      scenario: run.scenario,
+      changes,
       seed: run.seed,
-      horizon: applied.horizon,
-      maintenanceCrews:
-        applied.maintenanceCrews +
-        changes.reduce((sum, { extraCrews }) => sum + extraCrews, 0),
-      tickInterval: run.tickMinutes * 60,
+      tickMinutes: run.tickMinutes,
     },
     daysFor(run),
   );
