@@ -61,6 +61,8 @@ export interface AppliedRedesign {
   currency: string;
   /** Measured on the last step, once. */
   report?: PlantReport;
+  /** The 3D world built from the photos as redrawn, once one was asked for. */
+  world?: { id: string; documentId: string; startedAt: number };
 }
 
 type Measured = Pick<Change, "diffs" | "extraCrews">;
@@ -94,19 +96,19 @@ export async function measureDays(
 }
 
 /** Each of the scenario's targets, and whether a plant meets it. */
-function targetsOf({ targets }: Scenario) {
+function targetsOf({ targets, unit = "parts" }: Scenario) {
   const checks: { name: string; met: (kpis: Kpis) => boolean }[] = [];
   if (targets?.throughputPerShift) {
     const wanted = targets.throughputPerShift;
     checks.push({
-      name: `${wanted} parts per shift`,
+      name: `${wanted} ${unit} per shift`,
       met: (kpis) => kpis.completed >= wanted,
     });
   }
   if (targets?.maxAverageWip) {
     const most = targets.maxAverageWip;
     checks.push({
-      name: `under ${most} parts in progress`,
+      name: `under ${most} ${unit} in progress`,
       met: (kpis) => kpis.averageWip <= most,
     });
   }

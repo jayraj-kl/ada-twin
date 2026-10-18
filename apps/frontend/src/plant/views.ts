@@ -301,5 +301,94 @@ export async function cutView(
   return { mimeType: "image/jpeg", data: url.slice(url.indexOf(",") + 1) };
 }
 
+/** An image's pixels, from a URL the page can read (data:, or the API's). */
+function loadPixels(src: string): Promise<ImageData> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return reject(new Error("This browser cannot read images"));
+      context.drawImage(image, 0, 0);
+      resolve(context.getImageData(0, 0, canvas.width, canvas.height));
+    };
+    image.onerror = () => reject(new Error("A drawing could not be loaded"));
+    image.src = src;
+  });
+}
+
+// Pixels over which a drawing's edge fades into the panorama, so no seam shows.
+const FEATHER = 24;
+
+/**
+ * The panorama with each drawing put back where its view was cut from: the
+ * reverse of `cutView`, pixel by pixel, its edges blended in. Everything the
+ * drawings do not cover stays the original photo, so the world built from it
+ * keeps the rest of the plant as it was.
+ */
+export async function pasteViews(
+  panoramaUrl: string,
+  drawings: { view: Pick<PlantView, "yaw" | "pitch" | "fov">; src: string }[],
+): Promise<Blob> {
+  const source = await loadPanorama(panoramaUrl);
+  const { width: sw, height: sh } = source;
+  const out = new Uint8ClampedArray(source.data);
+
+  for (const { view, src } of drawings) {
+    const image = await loadPixels(src);
+    const { width: iw, height: ih, data } = image;
+    const yaw = radians(view.yaw);
+    const pitch = radians(view.pitch);
+    const forward = [Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw)];
+    const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
+    const up = [-Math.sin(pitch) * Math.sin(yaw), Math.cos(pitch), -Math.sin(pitch) * Math.cos(yaw)];
+    // The view's shape as it was cut, whatever size the drawing came back.
+    const halfWide = Math.tan(radians(view.fov) / 2);
+    const halfHigh = (halfWide * VIEW_HEIGHT) / VIEW_WIDTH;
+
+    for (let row = 0; row < sh; row++) {
+      const latitude = (0.5 - (row + 0.5) / sh) * Math.PI;
+      const y = Math.sin(latitude);
+      const flat = Math.cos(latitude);
+      for (let column = 0; column < sw; column++) {
+        const longitude = ((column + 0.5) / sw - 0.5) * 2 * Math.PI;
+        const x = flat * Math.sin(longitude);
+        const z = flat * Math.cos(longitude);
+        const ahead = x * forward[0]! + y * forward[1]! + z * forward[2]!;
+        if (ahead <= 0) continue;
+        const across = (x * right[0]! + z * right[2]!) / ahead / halfWide;
+        const down = (x * up[0]! + y * up[1]! + z * up[2]!) / ahead / halfHigh;
+        if (Math.abs(across) >= 1 || Math.abs(down) >= 1) continue;
+        const ix = Math.min(iw - 1, Math.floor(((across + 1) / 2) * iw));
+        const iy = Math.min(ih - 1, Math.floor(((1 - down) / 2) * ih));
+        const edge = Math.min(ix, iw - 1 - ix, iy, ih - 1 - iy);
+        const weight = Math.min(1, edge / FEATHER);
+        const from = (iy * iw + ix) * 4;
+        const to = (row * sw + column) * 4;
+        for (let channel = 0; channel < 3; channel++) {
+          out[to + channel] =
+            out[to + channel]! * (1 - weight) + data[from + channel]! * weight;
+        }
+      }
+    }
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = sw;
+  canvas.height = sh;
+  canvas.getContext("2d")!.putImageData(new ImageData(out, sw, sh), 0, 0);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (blob) =>
+        blob ? resolve(blob) : reject(new Error("The panorama could not be made")),
+      "image/jpeg",
+      0.92,
+    ),
+  );
+}
+
 export const dataUrl = ({ mimeType, data }: { mimeType: string; data: string }) =>
   `data:${mimeType};base64,${data}`;

@@ -127,29 +127,18 @@ async function copyWorld(projectId: string, row: WorldRow, world: World) {
   });
 }
 
-/**
- * Starts building the project's world from one of its kept panoramas:
- * { documentId }. Answers at once; the world is ready in about five minutes.
- */
-projectWorld.post("/:id/world", async (c) => {
-  const id = c.req.param("id");
-  const row = await project(id);
-  const body = (await c.req.json().catch(() => null)) as {
-    documentId?: unknown;
-  } | null;
-  const documentId = body?.documentId;
+/** Starts World Labs on one of the project's kept panoramas; a new world row. */
+async function startWorld(
+  id: string,
+  name: string,
+  documentId: unknown,
+): Promise<string> {
   if (typeof documentId !== "string" || !UUID.test(documentId)) {
     fail(400, "Expected { documentId } of a kept panorama");
   }
   const panorama = await selectDocument(id, documentId as string);
   if (!panorama || panorama.kind !== "panorama") {
     fail(404, "No such panorama in this project");
-  }
-  if (row.worldId) {
-    const current = await selectWorldById(row.worldId);
-    if (current?.status === "generating") {
-      fail(409, "A 3D world is already being built for this project");
-    }
   }
   const client = worldLabs();
   const file = await readFile(panorama!.path);
@@ -168,20 +157,61 @@ projectWorld.post("/:id/world", async (c) => {
       image_prompt: { source: "media_asset", media_asset_id: mediaAssetId },
       is_pano: true,
     },
-    display_name: row.name.slice(0, 64),
+    display_name: name.slice(0, 64),
   });
   const worldId = await insertWorld({
-    name: row.name,
+    name,
     operationId: operation.operation_id,
     status: "generating",
   });
-  await updateProject(id, { worldId });
   log.info("world started", {
     project: id,
     world: worldId,
     operation: operation.operation_id,
     ms: since(started),
   });
+  return worldId;
+}
+
+/**
+ * Starts building the project's world from one of its kept panoramas:
+ * { documentId }. Answers at once; the world is ready in about five minutes.
+ */
+projectWorld.post("/:id/world", async (c) => {
+  const id = c.req.param("id");
+  const row = await project(id);
+  const body = (await c.req.json().catch(() => null)) as {
+    documentId?: unknown;
+  } | null;
+  if (row.worldId) {
+    const current = await selectWorldById(row.worldId);
+    if (current?.status === "generating") {
+      fail(409, "A 3D world is already being built for this project");
+    }
+  }
+  const worldId = await startWorld(id, row.name, body?.documentId);
+  await updateProject(id, { worldId });
+  const world = await selectWorldById(worldId);
+  return c.json({ world: summary(world!) }, 202);
+});
+
+/**
+ * Starts another world from a kept panorama, such as the plant redrawn with
+ * an applied redesign: { documentId, name? }. It sits beside the project's
+ * own world and never replaces it; the page keeps its id.
+ */
+projectWorld.post("/:id/worlds", async (c) => {
+  const id = c.req.param("id");
+  const row = await project(id);
+  const body = (await c.req.json().catch(() => null)) as {
+    documentId?: unknown;
+    name?: unknown;
+  } | null;
+  const name =
+    typeof body?.name === "string" && body.name.trim()
+      ? body.name.trim().slice(0, 120)
+      : row.name + " · redesign";
+  const worldId = await startWorld(id, name, body?.documentId);
   const world = await selectWorldById(worldId);
   return c.json({ world: summary(world!) }, 202);
 });
@@ -195,17 +225,62 @@ projectWorld.get("/:id/world", async (c) => {
   const id = c.req.param("id");
   const row = await project(id);
   if (!row.worldId) return c.json({ world: null });
-  let world = await selectWorldById(row.worldId);
+  const world = await selectWorldById(row.worldId);
   if (!world) return c.json({ world: null });
+  return c.json(await refresh(id, world));
+});
+
+/** Another of the project's worlds, by the id its start answered. */
+projectWorld.get("/:id/worlds/:worldId", async (c) => {
+  const id = c.req.param("id");
+  await project(id);
+  const world = await otherWorld(c.req.param("worldId"));
+  return c.json(await refresh(id, world));
+});
+
+/** One of that world's files, named as the viewer loads them. */
+projectWorld.get("/:id/worlds/:worldId/files/:name", async (c) => {
+  const id = c.req.param("id");
+  const name = c.req.param("name") as WorldFile;
+  if (!(name in FILES)) fail(404, "No such file");
+  await project(id);
+  const world = await otherWorld(c.req.param("worldId"));
+  if (world.status !== "ready") fail(404, "This world is not ready yet");
+  return fileResponse(id, world.id, name);
+});
+
+async function otherWorld(worldId: string) {
+  if (!UUID.test(worldId)) fail(404, "No such world");
+  const world = await selectWorldById(worldId);
+  if (!world) fail(404, "No such world");
+  return world!;
+}
+
+async function fileResponse(id: string, worldId: string, name: WorldFile) {
+  const file = await readFile(projectPath(id, "world", worldId, name));
+  if (!file) fail(404, "No such file");
+  return new Response(new Uint8Array(file!.data), {
+    headers: {
+      "Content-Type": FILES[name],
+      // A world's files never change; a new world gets a new folder.
+      "Cache-Control": "private, max-age=86400",
+    },
+  });
+}
+
+/**
+ * A world as the page shows it. While generating, this asks World Labs how
+ * far it got; once done, it copies the files into the project's files.
+ */
+async function refresh(id: string, row: WorldRow) {
+  let world = row;
   if (world.status !== "generating" || !world.operationId) {
-    return c.json({ world: summary(world) });
+    return { world: summary(world) };
   }
 
   const operation = await worldLabs().getOperation(world.operationId);
   if (!operation.done) {
-    return c.json({
-      world: summary(world, operation.metadata?.progress?.description),
-    });
+    return { world: summary(world, operation.metadata?.progress?.description) };
   }
   if (operation.error || !operation.response) {
     await updateWorld(world.id, {
@@ -217,20 +292,20 @@ projectWorld.get("/:id/world", async (c) => {
     if (!copy) {
       copy = copyWorld(id, world, operation.response)
         .catch(async (error: unknown) => {
-          log.error("world copy failed", { project: id, world: world!.id, error });
-          await updateWorld(world!.id, {
+          log.error("world copy failed", { project: id, world: row.id, error });
+          await updateWorld(row.id, {
             status: "failed",
             lastError: "The world was built but could not be saved; build it again",
           });
         })
-        .finally(() => copying.delete(world!.id));
+        .finally(() => copying.delete(row.id));
       copying.set(world.id, copy);
     }
     await copy;
   }
-  world = await selectWorldById(world.id);
-  return c.json({ world: summary(world!) });
-});
+  world = (await selectWorldById(world.id))!;
+  return { world: summary(world) };
+}
 
 /** One of the ready world's files, named as the viewer loads them. */
 projectWorld.get("/:id/world/files/:name", async (c) => {
@@ -240,15 +315,7 @@ projectWorld.get("/:id/world/files/:name", async (c) => {
   const row = await project(id);
   const world = row.worldId ? await selectWorldById(row.worldId) : null;
   if (world?.status !== "ready") fail(404, "This project has no 3D world yet");
-  const file = await readFile(projectPath(id, "world", world!.id, name));
-  if (!file) fail(404, "No such file");
-  return new Response(new Uint8Array(file!.data), {
-    headers: {
-      "Content-Type": FILES[name],
-      // A world's files never change; a new world gets a new folder.
-      "Cache-Control": "private, max-age=86400",
-    },
-  });
+  return fileResponse(id, world!.id, name);
 });
 
 /** Goes back to the demo world; the built world's files stay until deleted. */

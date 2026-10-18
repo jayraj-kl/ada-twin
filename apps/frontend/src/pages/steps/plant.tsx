@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { useProjectId, useProjectPath } from "@/lib/projects";
+import { useProjectId, useProjectPath, useProjects } from "@/lib/projects";
 import { getState, setState } from "@/lib/project-store";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
@@ -26,8 +26,10 @@ import {
   type Tier,
   rankChanges,
 } from "@/plant/rank";
+import { RedesignWorld } from "@/plant/RedesignWorld";
 import { type PlantView, cutView, dataUrl, viewsFor } from "@/plant/views";
 import { moneyRange, perPart, signed } from "@/results/format";
+import { usePlantUnit } from "@/scenario/plant";
 import { originLabel } from "@/results/tabs";
 import {
   type InlineImage,
@@ -60,7 +62,10 @@ const when = (at: number) =>
   }).format(at);
 
 export default function PlantPage() {
+  const unit = usePlantUnit();
   const projectId = useProjectId();
+  const projectName =
+    useProjects().find(({ id }) => id === projectId)?.name ?? "";
   const { panoramaUrl } = useProjectWorld(projectId);
   const path = useProjectPath();
   const [applied, setApplied, loaded] = useStored(APPLIED_KEY, NO_APPLIED);
@@ -392,16 +397,30 @@ export default function PlantPage() {
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className={ui.eyebrow}>Step 6 · New plant</p>
-          <h1 className={ui.title}>What the redesign changes</h1>
+        <div className="w-full sm:w-auto">
+          {/* On paper: what this is, for whom, and when. */}
+          <div className="mb-5 hidden items-baseline justify-between gap-4 border-b-2 border-ink pb-2 text-xs print:flex">
+            <span className="font-semibold tracking-[0.08em] uppercase">
+              AdaTwin · Redesign report
+            </span>
+            <span className="text-muted-foreground">
+              {projectName} · applied {when(record.at)}
+            </span>
+          </div>
+          <p className={cn(ui.eyebrow, "print:hidden")}>Step 6 · New plant</p>
+          <h1 className={cn(ui.title, "print:text-3xl")}>
+            What the redesign changes
+          </h1>
           <p className={cn(ui.lede, "mb-6")}>
             The changes you applied, most critical first for{" "}
             <strong className="text-foreground">
               {record.run.scenario.name}
             </strong>
-            , each measured over {daysFor(record.run)} simulated days. On the
-            right, Nano Banana draws them into photos of your plant.
+            , each measured over {daysFor(record.run)} simulated days.
+            <span className="print:hidden">
+              {" "}
+              On the right, Nano Banana draws them into photos of your plant.
+            </span>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -469,7 +488,7 @@ export default function PlantPage() {
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className={ui.kpi}>
-                  <div className={ui.kpiLabel}>Before, parts per shift</div>
+                  <div className={ui.kpiLabel}>Before, {unit} per shift</div>
                   <div className={ui.kpiValue}>{Math.round(report.before)}</div>
                 </div>
                 <div className={cn(ui.kpi, "border-ink")}>
@@ -695,6 +714,16 @@ export default function PlantPage() {
               </div>
             </div>
           )}
+
+          <RedesignWorld
+            projectId={projectId}
+            record={record}
+            drawings={gallery}
+            panoramaUrl={panoramaUrl}
+            onStarted={(world) =>
+              update(record.id, (current) => ({ ...current, world }))
+            }
+          />
         </section>
 
         {/* The photos, and the conversation about them. */}
@@ -741,6 +770,12 @@ export default function PlantPage() {
           </p>
         </aside>
       </div>
+      <p className="mt-8 hidden border-t border-border pt-3 text-[11px] text-muted-foreground print:block">
+        Simulated with AdaTwin: each figure is the average of{" "}
+        {daysFor(record.run)} simulated shifts of {record.run.scenario.name},
+        on standard rules. Drawings are AI visual aids, not plans to build
+        from. Printed {when(Date.now())}.
+      </p>
     </>
   );
 }
