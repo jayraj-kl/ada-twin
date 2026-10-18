@@ -1,5 +1,4 @@
 import type { Kpis } from "@repo/sim";
-import { PlayIcon } from "lucide-react";
 import { usePlantUnit } from "@/scenario/plant";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
@@ -28,21 +27,19 @@ export interface Trial {
 }
 
 /**
- * What the picked changes do together against one by one, and the button
- * that runs the shift with them. Shown in the side pane, and over the world
- * when the redesign is in view.
+ * What the picked changes do together against one by one, and how their run
+ * stands. They run from the run button over the world, on the redesign.
+ * Shown in the side pane, and over the world when the redesign is in view.
  */
 export function PickedChanges({
   picks,
   trial,
   hasAgents,
-  onRun,
   over = false,
 }: {
   picks: Picks;
   trial: Trial;
   hasAgents: boolean;
-  onRun: () => void;
   /** Drawn over the world, on its dark glass. */
   over?: boolean;
 }) {
@@ -86,9 +83,9 @@ export function PickedChanges({
       )}
       {!over && (
         <p className={cn("text-xs", quiet)}>
-          Measured on standard rules. Run them on a copy of your twin to see
-          standard rules and your agents with them; your twin changes only when
-          you apply them.
+          Measured on standard rules. Switch the view to Redesign and run the
+          shift to see standard rules and your agents with them, on a copy of
+          your twin; your twin changes only when you apply them.
         </p>
       )}
       {trial.problem && (
@@ -99,23 +96,13 @@ export function PickedChanges({
       {trial.blocked ? (
         <p className={cn("text-xs", quiet)}>{trial.blocked}</p>
       ) : (
-        <button
-          type="button"
-          className={cn(ui.primary, "w-fit")}
-          disabled={trial.running}
-          onClick={onRun}
-        >
-          <PlayIcon />
-          {trial.running
-            ? hasAgents
-              ? `Running… ${trial.decisions} agent ${trial.decisions === 1 ? "decision" : "decisions"}`
-              : "Running…"
-            : trial.after
-              ? "Run again"
-              : trial.outdated
-                ? "Run with the new picks"
-                : "Run with these changes"}
-        </button>
+        trial.running && (
+          <p className={cn("text-xs", quiet)}>
+            Running with these changes…
+            {hasAgents &&
+              ` ${trial.decisions} agent ${trial.decisions === 1 ? "decision" : "decisions"} so far.`}
+          </p>
+        )
       )}
       {trial.after && (
         <p className={cn("text-xs", quiet)}>

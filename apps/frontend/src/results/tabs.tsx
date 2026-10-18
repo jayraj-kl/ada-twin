@@ -284,7 +284,6 @@ export function ResultsTab({
   onTop,
   picks,
   trial,
-  onRunTrial,
   onRemove,
   scouted,
   scouting,
@@ -310,7 +309,6 @@ export function ResultsTab({
   trial: Trial;
   /** Takes a picked change back out. */
   onRemove: (change: MeasuredChange) => void;
-  onRunTrial: () => void;
   /** What the AI found the plant is missing; null before anyone asked. */
   scouted: (MeasuredChange & { added: boolean })[] | null;
   scouting: boolean;
@@ -614,7 +612,6 @@ export function ResultsTab({
             picks={picks}
             trial={trial}
             hasAgents={hasAgents}
-            onRun={onRunTrial}
           />
         </div>
       )}

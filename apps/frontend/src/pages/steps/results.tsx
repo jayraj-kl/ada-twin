@@ -1216,8 +1216,24 @@ export default function ResultsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [showDecisions, sheet]);
 
-  const runLabel = live ? "Running…" : run ? "Run again" : "Run the shift";
-  const runDisabled = !ready || Boolean(live);
+  // The one run button follows the view: on the redesign, with changes
+  // picked, it runs them on a copy of the twin; otherwise the twin itself.
+  const runsPicks = Boolean(run) && view === "redesign" && kept.length > 0;
+  const runLabel = live
+    ? trialState.running && run?.agents.length
+      ? `Running… ${trialState.decisions} ${trialState.decisions === 1 ? "decision" : "decisions"}`
+      : "Running…"
+    : runsPicks
+      ? trialState.after
+        ? "Run changes again"
+        : trialState.outdated
+          ? "Run with the new picks"
+          : "Run with changes"
+      : run
+        ? "Run again"
+        : "Run the shift";
+  const runDisabled =
+    !ready || Boolean(live) || (runsPicks && Boolean(trialState.blocked));
   const chatDisabled = !run
     ? "Run the shift first, then redesign it here"
     : live
@@ -1281,7 +1297,6 @@ export default function ResultsPage() {
         onTop={onTop}
         picks={picks}
         trial={trialState}
-        onRunTrial={() => void runTrial()}
         onRemove={(change) => dropKept(change.id)}
         scouted={scoutedRows ?? null}
         scouting={scouting}
@@ -1421,19 +1436,32 @@ export default function ResultsPage() {
             )}
             <span
               title={
-                !ready ? "Finish the twin's material flow first" : undefined
+                !ready
+                  ? "Finish the twin's material flow first"
+                  : runsPicks
+                    ? trialState.blocked ||
+                      "Run the shift with the picked changes, on a copy of your twin"
+                    : undefined
               }
             >
               <button
                 className={cn(
                   ui.button,
                   "h-9",
-                  run && !stale ? "bg-card" : ui.primary,
+                  (run && !stale && !runsPicks) ||
+                    (runsPicks && trialState.after)
+                    ? "bg-card"
+                    : ui.primary,
                 )}
                 disabled={runDisabled}
-                onClick={start}
+                onClick={runsPicks ? () => void runTrial() : start}
               >
-                {run ? <RotateCcwIcon /> : <PlayIcon />} {runLabel}
+                {run && !(runsPicks && !trialState.after) ? (
+                  <RotateCcwIcon />
+                ) : (
+                  <PlayIcon />
+                )}{" "}
+                {runLabel}
               </button>
             </span>
           </div>
@@ -1448,7 +1476,6 @@ export default function ResultsPage() {
                   picks={picks}
                   trial={trialState}
                   hasAgents={run.agents.length > 0}
-                  onRun={() => void runTrial()}
                   over
                 />
               </div>
