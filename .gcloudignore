@@ -14,3 +14,4 @@ apps/frontend/public/
 # Debug output and sample inputs of the scripts; the API image needs neither.
 scripts/locate-out/
 scripts/inputs/
+scripts/bench-out/

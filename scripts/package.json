@@ -9,7 +9,9 @@
     "generate-pano": "tsx --env-file-if-exists=../.env src/generate-pano.ts",
     "agent-demo": "tsx --env-file-if-exists=../.env src/agent-demo.ts",
     "fetch-world": "tsx --env-file-if-exists=../.env src/fetch-world.ts",
-    "locate-demo": "tsx --env-file-if-exists=../.env src/locate-demo.ts"
+    "locate-demo": "tsx --env-file-if-exists=../.env src/locate-demo.ts",
+    "benchmark": "tsx --env-file-if-exists=../.env src/benchmark.ts",
+    "bench-charts": "tsx src/bench-charts.ts"
   },
   "dependencies": {
     "@repo/agent": "workspace:*",
