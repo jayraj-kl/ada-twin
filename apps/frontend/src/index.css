@@ -218,3 +218,52 @@
     animation: none;
   }
 }
+
+/*
+ * Paper is white whatever the theme: print takes the light tokens, keeps the
+ * tags' colours, and drops the app's chrome, shadows and soft corners.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+  :root,
+  .dark {
+    --background: #ffffff;
+    --foreground: #14140f;
+    --card: #ffffff;
+    --card-foreground: #14140f;
+    --popover: #ffffff;
+    --popover-foreground: #14140f;
+    --primary: #beff50;
+    --primary-foreground: #14140f;
+    --secondary: #ebebdf;
+    --secondary-foreground: #14140f;
+    --muted: #f0f0e8;
+    --muted-foreground: #55554c;
+    --accent: #ebebdf;
+    --accent-foreground: #14140f;
+    --destructive: #b23a3a;
+    --border: #d2d2c8;
+    --input: #d2d2c8;
+    --ink: #14140f;
+    --success: #2f7d4f;
+    --warning: #a86b12;
+    --info: #2c6aa0;
+  }
+  html.dark {
+    color-scheme: light;
+  }
+  body {
+    background: #ffffff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  * {
+    box-shadow: none !important;
+  }
+  .rounded-3xl {
+    border-radius: 12px;
+  }
+}

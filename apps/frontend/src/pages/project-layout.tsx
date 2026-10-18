@@ -277,7 +277,7 @@ export default function ProjectLayout() {
         {project.sample && (
           <div
             aria-hidden
-            className="h-1.5 bg-[repeating-linear-gradient(135deg,var(--primary)_0_8px,transparent_8px_16px)]"
+            className="h-1 bg-primary print:hidden"
           />
         )}
         <main
