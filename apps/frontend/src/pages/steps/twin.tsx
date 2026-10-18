@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { motionTokens, springs } from "@/lib/motion";
+import { getField, getState, setField, setState } from "@/lib/project-store";
 import { readJson, writeJson } from "@/lib/storage";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { NumberField } from "@/components/ui/number-field";
@@ -45,19 +46,20 @@ import {
   type Machine,
   type Param,
   type Provenance,
+  deleteDocument,
+  documentUrl,
   draftFlow,
   findParameters,
   locate,
   reviseFlow,
+  uploadDocument,
 } from "@/twin/api";
 import { FlowChat, type FlowChatMessage } from "@/twin/FlowChat";
 import {
   EMPTY_FLOW,
   EXTRA_DEFAULTS,
-  FLOW_KEY,
   type Flow,
   type FlowMember,
-  PROCESS_KEY,
   flowProblems,
   flowWarnings,
   layoutFlow,
@@ -65,11 +67,10 @@ import {
 import { FlowEditor, type FlowMachine } from "@/twin/FlowEditor";
 import {
   CAMERA_HEIGHT_M,
-  MACHINES_KEY,
-  WORLD_DIR,
   paramsFor,
   stationParam,
 } from "@/twin/project";
+import { useProjectWorld } from "@/twin/world";
 
 const DRAWER_KEY = "twin-drawer";
 const CHAT_KEY = "twin-flow-chat";
@@ -140,6 +141,9 @@ interface Entry extends Machine {
   auxiliarySuggested?: boolean;
   /** New equipment an applied redesign added. */
   added?: "redesign";
+  /** Documents kept with the project, used to look the machine up. */
+  kept?: { id: string; name: string }[];
+  /** Files picked this visit that could not be kept; used, then forgotten. */
   documents?: File[];
   busy?: boolean;
   problem?: string;
@@ -184,6 +188,7 @@ function Source({ provenance }: { provenance: Provenance }) {
 
 export default function TwinPage() {
   const projectId = useProjectId();
+  const { worldDir, panoramaUrl } = useProjectWorld(projectId);
   const path = useProjectPath();
   const world = useRef<WorldViewHandle>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -242,21 +247,24 @@ export default function TwinPage() {
     else void root.current?.requestFullscreen();
   }
 
-  // The list lives in this browser until projects are stored on the server.
+  // The list and flow are saved with the project on the server; the project
+  // has loaded before this step shows.
   useEffect(() => {
     try {
-      const savedFlow = localStorage.getItem(projectKey(projectId, FLOW_KEY));
-      const stored: Partial<Flow> = savedFlow ? JSON.parse(savedFlow) : {};
+      const stored = (getField(projectId, "flow") ?? {}) as Partial<Flow>;
       // An early version linked auxiliary machines by "monitors" instead of
       // marking them; what monitored something becomes auxiliary.
       const { monitors, ...rest } = stored;
       const legacy = new Set((monitors ?? []).map(({ from }) => from));
       setFlow({ ...EMPTY_FLOW, ...rest, needs: rest.needs ?? monitors ?? [] });
 
-      const saved = localStorage.getItem(projectKey(projectId, MACHINES_KEY));
+      const saved = getField(projectId, "machines") as
+        | (Entry & { pin?: Point })[]
+        | null
+        | undefined;
       if (saved) {
         // Lists saved before a machine could have several pins had one `pin`.
-        const entries = JSON.parse(saved) as (Entry & { pin?: Point })[];
+        const entries = saved;
         setEntries(
           withColors(
             entries.map(({ pin, ...entry }) => ({
@@ -267,48 +275,36 @@ export default function TwinPage() {
           ),
         );
       }
-      setChat(readJson<ChatMessage[]>(projectKey(projectId, CHAT_KEY)) ?? []);
-      // Saved as JSON by the capture step.
-      const process = localStorage.getItem(projectKey(projectId, PROCESS_KEY));
-      setProcess(process === null ? "" : (JSON.parse(process) as string));
+      setChat((getState(projectId, CHAT_KEY) as ChatMessage[] | undefined) ?? []);
+      setProcess((getField(projectId, "process") as string | null) ?? "");
     } catch {
-      // A private window or corrupt entry just starts from an empty list.
+      // A private window or corrupt chat entry just starts empty.
     }
     setLoaded(true);
   }, [projectId]);
   useEffect(() => {
     if (!loaded) return;
-    try {
-      const plain = entries.map((entry) => ({
-        ...entry,
-        documents: undefined,
-        busy: undefined,
-        problem: undefined,
-      }));
-      localStorage.setItem(
-        projectKey(projectId, MACHINES_KEY),
-        JSON.stringify(plain),
-      );
-    } catch {
-      // Not being able to save is not worth interrupting the user for.
-    }
+    // Through JSON, as the server will keep it: files and passing states drop.
+    const plain = JSON.parse(
+      JSON.stringify(
+        entries.map((entry) => ({
+          ...entry,
+          documents: undefined,
+          busy: undefined,
+          problem: undefined,
+        })),
+      ),
+    );
+    setField(projectId, "machines", plain);
   }, [entries, loaded, projectId]);
 
   useEffect(() => {
     if (!loaded) return;
-    try {
-      localStorage.setItem(
-        projectKey(projectId, FLOW_KEY),
-        JSON.stringify(flow),
-      );
-    } catch {
-      // As above.
-    }
+    setField(projectId, "flow", JSON.parse(JSON.stringify(flow)));
   }, [flow, loaded, projectId]);
 
   useEffect(() => {
-    if (loaded)
-      writeJson(projectKey(projectId, CHAT_KEY), chat.slice(-CHAT_LIMIT));
+    if (loaded) setState(projectId, CHAT_KEY, chat.slice(-CHAT_LIMIT));
   }, [chat, loaded, projectId]);
 
   // Keyed on what the diagram shows, so typing in a card's other fields does
@@ -393,7 +389,7 @@ export default function TwinPage() {
     );
     try {
       const revised = await reviseFlow(
-        `${window.location.origin}${WORLD_DIR}/pano.png`,
+        panoramaUrl,
         flowMachines.map(({ id, name, count, auxiliary, suggested }) => ({
           id,
           name,
@@ -528,7 +524,7 @@ export default function TwinPage() {
     setFlowMessage("");
     try {
       const drafted = await draftFlow(
-        `${window.location.origin}${WORLD_DIR}/pano.png`,
+        panoramaUrl,
         // A suggestion the user has not confirmed is asked about afresh.
         flowMachines.map(({ id, name, count, auxiliary, suggested }) => ({
           id,
@@ -647,7 +643,7 @@ export default function TwinPage() {
         }),
       );
       const placements = await locate(
-        `${window.location.origin}${WORLD_DIR}/pano.png`,
+        panoramaUrl,
         machines,
       );
       let placed = 0;
@@ -693,6 +689,7 @@ export default function TwinPage() {
           auxiliary: entry.auxiliary,
         },
         entry.documents ?? [],
+        { projectId, ids: (entry.kept ?? []).map(({ id }) => id) },
       );
       update(entry.id, { params, busy: false });
     } catch (error) {
@@ -701,6 +698,46 @@ export default function TwinPage() {
         problem: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /** Keeps picked documents with the project, under the machine they are for. */
+  async function keepDocuments(entry: Entry, files: File[]) {
+    if (files.length === 0) return;
+    update(entry.id, { busy: true, problem: undefined });
+    const results = await Promise.allSettled(
+      files.map((file) =>
+        uploadDocument(projectId, file, { kind: "document", machineId: entry.id }),
+      ),
+    );
+    const kept = results.flatMap((result) =>
+      result.status === "fulfilled"
+        ? [{ id: result.value.id, name: result.value.name }]
+        : [],
+    );
+    const failed = files.filter((_, index) => results[index]!.status === "rejected");
+    setEntries((current) =>
+      current.map((item) =>
+        item.id === entry.id
+          ? {
+              ...item,
+              busy: false,
+              kept: [...(item.kept ?? []), ...kept],
+              documents: failed.length > 0 ? failed : undefined,
+              problem:
+                failed.length > 0
+                  ? `${failed.length} ${failed.length === 1 ? "document was" : "documents were"} not saved; ${failed.length === 1 ? "it is" : "they are"} used for this visit only.`
+                  : undefined,
+            }
+          : item,
+      ),
+    );
+  }
+
+  function dropDocument(entry: Entry, documentId: string) {
+    update(entry.id, {
+      kept: (entry.kept ?? []).filter(({ id }) => id !== documentId),
+    });
+    void deleteDocument(projectId, documentId).catch(() => undefined);
   }
 
   function onPick(point: Point) {
@@ -791,7 +828,8 @@ export default function TwinPage() {
   }
 
   function renderDetails(entry: Entry) {
-    const hasDocuments = (entry.documents?.length ?? 0) > 0;
+    const hasDocuments =
+      (entry.documents?.length ?? 0) + (entry.kept?.length ?? 0) > 0;
     const infoMissing = !hasDocuments && !(entry.manufacturer && entry.model);
     const count = entry.count ?? 1;
     const pinned = Math.min(entry.pins?.length ?? 0, count);
@@ -886,10 +924,38 @@ export default function TwinPage() {
             className={ui.file}
             multiple
             accept="application/pdf,image/*"
-            onChange={(event) =>
-              update(entry.id, { documents: [...(event.target.files ?? [])] })
-            }
+            onChange={(event) => {
+              void keepDocuments(entry, [...(event.target.files ?? [])]);
+              event.target.value = "";
+            }}
           />
+          {(entry.kept?.length ?? 0) > 0 && (
+            <ul className="mt-1 flex flex-col gap-1">
+              {entry.kept!.map((document) => (
+                <li
+                  key={document.id}
+                  className="flex items-center justify-between gap-2 text-xs"
+                >
+                  <a
+                    href={documentUrl(projectId, document.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate underline-offset-2 hover:underline"
+                  >
+                    {document.name}
+                  </a>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${document.name}`}
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => dropDocument(entry, document.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {infoMissing && (
@@ -1126,6 +1192,7 @@ export default function TwinPage() {
                           disabled={
                             entry.busy ||
                             (!(entry.documents?.length ?? 0) &&
+                              !(entry.kept?.length ?? 0) &&
                               !(entry.manufacturer && entry.model))
                           }
                           onSelect={() => research(entry)}
@@ -1215,7 +1282,7 @@ export default function TwinPage() {
   return (
     <div ref={root} className="relative h-full overflow-hidden bg-[#14140f]">
       <WorldView
-        worldDir={WORLD_DIR}
+        worldDir={worldDir}
         cameraHeightMetres={CAMERA_HEIGHT_M}
         items={items}
         onPick={onPick}

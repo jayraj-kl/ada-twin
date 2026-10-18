@@ -8,8 +8,8 @@ const HANG_BELOW_CEILING = 0.12;
 const SAMPLE_COUNT = 40_000;
 // Directions tried when looking for the hall's long axis.
 const AXIS_PROBES = 36;
-// How far below the horizon the camera looks when it starts.
-export const RAIL_TILT_DEGREES = 40;
+// How far below the horizon the camera looks when it starts (5 degrees for natural eye level).
+export const RAIL_TILT_DEGREES = 5;
 // Splats this close (splat units) to floor height count as floor.
 const FLOOR_BAND = 0.15;
 // Only floor within this many splat units of the centre line sets its length.

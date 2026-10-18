@@ -1,10 +1,19 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
-import { deleteImages } from "@/plant/images";
+import {
+  type ProjectSummary,
+  SERVER_KEYS,
+  forgetProject,
+  onSummary,
+} from "./project-store";
+import { server } from "./server";
 import { readJson, removeKey, writeJson } from "./storage";
 
-// Projects live in this browser until they are stored on the server; this
-// module is the one place that has to change when they are.
-const LIST_KEY = "ada-twin:projects";
+// Projects are saved on the server and anonymous: this browser keeps the ids
+// of its own projects, with their names and times as last seen, so the list
+// shows at once and then refreshes. Projects from before the server, under
+// the old "ada-twin:projects" key, are no longer listed; their data is left
+// where it is.
+const LIST_KEY = "ada-twin:server-projects";
 
 export const STEPS = [
   { slug: "capture", label: "Capture", blurb: "Upload 360° panoramas of your floor" },
@@ -29,18 +38,7 @@ export function stepIndex(slug: StepSlug) {
   return STEPS.findIndex((step) => step.slug === slug);
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  createdAt: number;
-  updatedAt: number;
-  /** The furthest step reached, as an index into STEPS. */
-  reached: number;
-  /** A copy of the bundled sample plant, not the user's own. */
-  sample?: boolean;
-  /** For a sample, the project it was opened from. */
-  origin?: string;
-}
+export type Project = ProjectSummary;
 
 const listeners = new Set<() => void>();
 let cached: Project[] | undefined;
@@ -56,9 +54,42 @@ function write(next: Project[]) {
   for (const listener of listeners) listener();
 }
 
+/** Adds a project to this browser's list, or updates what it shows. */
+function remember(project: Project) {
+  const projects = read();
+  write(
+    projects.some(({ id }) => id === project.id)
+      ? projects.map((known) => (known.id === project.id ? project : known))
+      : [project, ...projects],
+  );
+}
+
+// A project opened from a link joins the list; a save moves its time on.
+onSummary(remember);
+
+let refreshing: Promise<void> | undefined;
+
+/** Asks the server for the listed projects, dropping any it does not know. */
+export function refreshProjects(): Promise<void> {
+  refreshing ??= server<{ projects: Project[] }>(
+    `/projects?ids=${read()
+      .map(({ id }) => id)
+      .join(",")}`,
+  )
+    .then(({ projects }) => write(projects))
+    .catch(() => {
+      // Offline or no database: keep showing the list as last seen.
+    })
+    .finally(() => {
+      refreshing = undefined;
+    });
+  return refreshing;
+}
+
 export function useProjects() {
   return useSyncExternalStore((listener) => {
     listeners.add(listener);
+    if (listeners.size === 1) void refreshProjects();
     return () => listeners.delete(listener);
   }, read);
 }
@@ -67,31 +98,46 @@ export function getProject(id: string) {
   return read().find((project) => project.id === id) ?? null;
 }
 
-export function createProject(
+/** The server fields for page values given by their storage names. */
+function seedFields(seed: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(seed).flatMap(([key, value]) => {
+      const field = SERVER_KEYS[key as keyof typeof SERVER_KEYS];
+      return field ? [[field, value]] : [];
+    }),
+  );
+}
+
+export async function createProject(
   name: string,
-  extra?: Pick<Project, "sample" | "origin">,
-): Project {
-  const now = Date.now();
-  const project: Project = {
-    id: `p${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    name,
-    createdAt: now,
-    updatedAt: now,
-    reached: 0,
-    ...extra,
-  };
-  write([project, ...read()]);
+  extra?: Pick<Project, "sample" | "origin"> & {
+    seed?: Record<string, unknown>;
+  },
+): Promise<Project> {
+  const { project } = await server<{ project: Project }>("/projects", {
+    method: "POST",
+    body: {
+      name,
+      sample: extra?.sample,
+      origin: extra?.origin,
+      seed: extra?.seed && seedFields(extra.seed),
+    },
+  });
+  remember(project);
   return project;
 }
 
-function change(id: string, update: (project: Project) => Project) {
-  const projects = read();
-  if (!projects.some((project) => project.id === id)) return;
-  write(projects.map((project) => (project.id === id ? update(project) : project)));
+/** Changes a project's listing at once, and on the server behind it. */
+function change(id: string, patch: Partial<Pick<Project, "name" | "reached">>) {
+  const project = getProject(id);
+  if (project) remember({ ...project, ...patch, updatedAt: Date.now() });
+  void server(`/projects/${id}`, { method: "PATCH", body: patch }).catch(() => {
+    // The next refresh shows what the server kept.
+  });
 }
 
 export function renameProject(id: string, name: string) {
-  change(id, (project) => ({ ...project, name, updatedAt: Date.now() }));
+  change(id, { name });
 }
 
 /** Notes that the project was opened at a step, moving its progress on. */
@@ -99,15 +145,21 @@ export function visitStep(id: string, slug: StepSlug) {
   const index = stepIndex(slug);
   const project = getProject(id);
   if (!project || project.reached >= index) return;
-  change(id, (current) => ({ ...current, reached: index, updatedAt: Date.now() }));
+  change(id, { reached: index });
 }
 
-export function touchProject(id: string) {
-  change(id, (project) => ({ ...project, updatedAt: Date.now() }));
+/** Takes a project off this browser's list, as when the server lost it. */
+export function dropProject(id: string) {
+  write(read().filter((project) => project.id !== id));
 }
 
 export function deleteProject(id: string) {
-  write(read().filter((project) => project.id !== id));
+  dropProject(id);
+  forgetProject(id);
+  void server(`/projects/${id}`, { method: "DELETE" }).catch(() => {
+    // Already gone, or unreachable: it is off the list either way.
+  });
+  // What this browser kept for it: page state not on the server yet.
   try {
     const prefix = projectKey(id, "");
     const doomed: string[] = [];
@@ -119,30 +171,34 @@ export function deleteProject(id: string) {
   } catch {
     // Leftover entries only cost space.
   }
-  void deleteImages(`${id}:`).catch(() => undefined);
 }
 
-/** Where one project keeps one of its values. */
+/** Where one project keeps one of its values in this browser. */
 export function projectKey(id: string, key: string) {
   return `ada-twin:project:${id}:${key}`;
 }
 
-/** The one sample project, made on first use and reused after. */
-export function openSampleProject(
+/**
+ * The one sample project, made on first use from the sample's files and
+ * reused after. Like any project, it is saved on the server.
+ */
+export async function openSampleProject(
   name: string,
   origin: string | undefined,
   seed: Record<string, unknown>,
-) {
+): Promise<Project> {
   const existing = read().find((project) => project.sample);
   if (existing) {
-    if (existing.origin !== origin) change(existing.id, (project) => ({ ...project, origin }));
+    if (existing.origin !== origin) {
+      remember({ ...existing, origin });
+      void server(`/projects/${existing.id}`, {
+        method: "PATCH",
+        body: { origin: origin ?? null },
+      }).catch(() => undefined);
+    }
     return existing;
   }
-  const project = createProject(name, { sample: true, origin });
-  for (const [key, value] of Object.entries(seed)) {
-    writeJson(projectKey(project.id, key), value);
-  }
-  return project;
+  return createProject(name, { sample: true, origin, seed });
 }
 
 export const ProjectContext = createContext<string | null>(null);

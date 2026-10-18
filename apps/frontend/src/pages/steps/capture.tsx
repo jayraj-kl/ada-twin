@@ -23,14 +23,23 @@ import {
   deleteProject,
   getProject,
   openSampleProject,
+  timeAgo,
   useProjectId,
   useProjectPath,
   useProjects,
 } from "@/lib/projects";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import {
+  deleteDocument,
+  documentUrl,
+  listDocuments,
+  renameDocument,
+  uploadDocument,
+} from "@/twin/api";
 import { PROCESS_KEY } from "@/twin/flow";
-import { WORLD_DIR, useStored } from "@/twin/project";
+import { useStored } from "@/twin/project";
+import { startWorld, switchToDemoWorld, useProjectWorld } from "@/twin/world";
 import { SAMPLE, SAMPLE_SEED } from "@/twin/sample";
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp"];
@@ -48,7 +57,14 @@ interface Upload {
   room: string;
   /** Why this file cannot be used as a panorama, if it cannot. */
   problem?: string;
+  /** Its id once kept with the project; usable panoramas upload on adding. */
+  documentId?: string;
+  /** The upload under way, until the panorama is kept. */
+  saving?: boolean;
 }
+
+// A room name is saved this long after the last keystroke.
+const RENAME_DELAY_MS = 700;
 
 type World =
   { state: "checking" | "missing" } | { state: "ready"; scale?: number };
@@ -82,11 +98,11 @@ async function readUpload(file: File): Promise<Upload> {
   }
 }
 
-function useWorld() {
+function useWorld(worldDir: string) {
   const [world, setWorld] = useState<World>({ state: "checking" });
   useEffect(() => {
     let cancelled = false;
-    fetch(`${WORLD_DIR}/world.json`)
+    fetch(`${worldDir}/world.json`)
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((world) => {
         if (cancelled) return;
@@ -99,7 +115,7 @@ function useWorld() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [worldDir]);
   return world;
 }
 
@@ -301,12 +317,50 @@ function SampleDoor({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-function WorldCard({ world, sample }: { world: World; sample: boolean }) {
+function WorldCard({
+  world,
+  sample,
+  own,
+  worldDir,
+  panoramas,
+}: {
+  world: World;
+  sample: boolean;
+  own: ReturnType<typeof useProjectWorld>;
+  worldDir: string;
+  /** Kept panoramas a world can be built from. */
+  panoramas: Upload[];
+}) {
   const path = useProjectPath();
+  const projectId = useProjectId();
+  const [picked, setPicked] = useState<string>("");
+  const [starting, setStarting] = useState(false);
+  const [problem, setProblem] = useState("");
+  const chosen =
+    panoramas.find(({ documentId }) => documentId === picked) ?? panoramas[0];
+  const building = own.world?.status === "generating";
+
+  async function build() {
+    if (!chosen?.documentId) return;
+    setStarting(true);
+    setProblem("");
+    try {
+      await startWorld(projectId, chosen.documentId);
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setStarting(false);
+    }
+  }
+
   return (
     <section className={cn(ui.panel, ui.stack)}>
       <div className={ui.panelTitle}>
-        {sample ? "The sample 3D world" : "Your 3D world"}
+        {sample
+          ? "The sample 3D world"
+          : own.own
+            ? "Your plant's 3D world"
+            : "The 3D world"}
         <span className={ui.hint}>what the twin is placed in</span>
       </div>
 
@@ -315,13 +369,17 @@ function WorldCard({ world, sample }: { world: World; sample: boolean }) {
         style={
           world.state === "ready"
             ? {
-                backgroundImage: `linear-gradient(180deg, rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.5)), url("${WORLD_DIR}/pano.png")`,
+                backgroundImage: `linear-gradient(180deg, rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.5)), url("${worldDir}/pano.png")`,
               }
             : undefined
         }
       >
         {world.state === "ready" && (
-          <div className={ui.viewerNote}>Panorama the world was made from</div>
+          <div className={ui.viewerNote}>
+            {own.own
+              ? "Built from your panorama"
+              : "The demo boiler room, until you build your own"}
+          </div>
         )}
       </div>
 
@@ -331,7 +389,9 @@ function WorldCard({ world, sample }: { world: World; sample: boolean }) {
             <td>3D world, collision mesh and panorama</td>
             <td className={ui.num}>
               {world.state === "ready"
-                ? "ready"
+                ? own.own
+                  ? "yours, ready"
+                  : "demo, ready"
                 : world.state === "missing"
                   ? "not downloaded"
                   : "checking…"}
@@ -345,6 +405,95 @@ function WorldCard({ world, sample }: { world: World; sample: boolean }) {
           )}
         </tbody>
       </table>
+
+      {!sample && building && (
+        <div
+          role="status"
+          className="flex gap-3 rounded-2xl border border-ink bg-primary/15 p-3 text-sm"
+        >
+          <span className="mt-0.5 size-4 shrink-0 animate-spin rounded-full border-2 border-ink border-t-transparent" />
+          <div className="flex flex-col gap-1">
+            <strong>Building your 3D world…</strong>
+            <span className="text-muted-foreground">
+              World Labs usually takes about 5 minutes, sometimes longer. You
+              can keep working: the demo world is used until yours is ready,
+              and it switches over by itself.
+            </span>
+            {own.world?.progress && (
+              <span className="text-xs text-muted-foreground">
+                {own.world.progress}
+              </span>
+            )}
+            {own.world && (
+              <span className="text-xs text-muted-foreground">
+                Started {timeAgo(own.world.startedAt)}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!sample && own.world?.status === "failed" && (
+        <p className={cn(ui.poor, "text-sm")}>
+          The 3D world could not be built
+          {own.world.error ? `: ${own.world.error}` : ""}. Try again below.
+        </p>
+      )}
+
+      {!sample && !building && (
+        <div className="flex flex-col gap-2 rounded-2xl border border-border p-3">
+          <strong className="text-sm">
+            {own.own ? "Build it again" : "Build your plant's own 3D world"}
+          </strong>
+          {panoramas.length === 0 ? (
+            <p className={ui.hint}>
+              Upload a 2:1 panorama of your floor above, then build a 3D world
+              from it. Until then the twin uses the demo boiler room.
+            </p>
+          ) : (
+            <>
+              {panoramas.length > 1 && (
+                <select
+                  aria-label="Panorama to build the world from"
+                  className={ui.input}
+                  value={chosen?.documentId ?? ""}
+                  onChange={(event) => setPicked(event.target.value)}
+                >
+                  {panoramas.map((upload) => (
+                    <option key={upload.documentId} value={upload.documentId}>
+                      {upload.room || upload.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className={ui.hint}>
+                World Labs turns {chosen?.room ? `"${chosen.room}"` : "the panorama"}{" "}
+                into a 3D world you can walk through. It takes about 5 minutes
+                and uses World Labs credits.
+              </p>
+              <Button
+                size="sm"
+                className="w-fit"
+                disabled={starting}
+                onClick={() => void build()}
+              >
+                <SparklesIcon />
+                {starting ? "Starting…" : "Build the 3D world"}
+              </Button>
+            </>
+          )}
+          {problem && <p className={cn(ui.poor, "text-sm")}>{problem}</p>}
+          {own.own && (
+            <button
+              type="button"
+              className="w-fit text-xs text-muted-foreground underline-offset-2 hover:underline"
+              onClick={() => void switchToDemoWorld(projectId)}
+            >
+              Use the demo world instead
+            </button>
+          )}
+        </div>
+      )}
 
       {world.state === "missing" && (
         <p className={cn(ui.poor, "text-sm")}>
@@ -384,7 +533,8 @@ export default function CapturePage() {
   const path = useProjectPath();
   const navigate = useNavigate();
   const location = useLocation();
-  const world = useWorld();
+  const own = useProjectWorld(projectId);
+  const world = useWorld(own.worldDir);
   const picker = useRef<HTMLInputElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -400,18 +550,96 @@ export default function CapturePage() {
   previews.current = uploads;
   useEffect(
     () => () =>
-      previews.current.forEach(({ preview }) => URL.revokeObjectURL(preview)),
+      previews.current.forEach(({ preview }) => {
+        if (preview.startsWith("blob:")) URL.revokeObjectURL(preview);
+      }),
     [],
   );
+
+  // The panoramas kept with the project, as they were uploaded before.
+  useEffect(() => {
+    if (sample) return;
+    let cancelled = false;
+    listDocuments(projectId)
+      .then((documents) => {
+        if (cancelled) return;
+        const kept = documents
+          .filter(({ kind }) => kind === "panorama")
+          .map(
+            (document): Upload => ({
+              id: document.id,
+              documentId: document.id,
+              name: document.name,
+              preview: documentUrl(projectId, document.id),
+              megabytes: `${(document.size / 1e6).toFixed(1)} MB`,
+              room: document.label ?? document.name,
+            }),
+          );
+        setUploads((current) => [
+          ...kept.filter(({ id }) => !current.some((item) => item.id === id)),
+          ...current,
+        ]);
+      })
+      .catch(() => {
+        // Without the server, new panoramas still show; they just are not kept.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, sample]);
+
+  const update = (id: string, change: Partial<Upload>) =>
+    setUploads((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...change } : item)),
+    );
+
+  /** Keeps a usable panorama with the project. */
+  async function keep(upload: Upload, file: File) {
+    update(upload.id, { saving: true });
+    try {
+      const document = await uploadDocument(projectId, file, {
+        kind: "panorama",
+        label: upload.room,
+      });
+      update(upload.id, { documentId: document.id, saving: false });
+    } catch (error) {
+      update(upload.id, {
+        saving: false,
+        problem: `Not saved: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+
+  const renames = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  function rename(upload: Upload, room: string) {
+    update(upload.id, { room });
+    if (!upload.documentId) return;
+    const documentId = upload.documentId;
+    clearTimeout(renames.current.get(upload.id));
+    renames.current.set(
+      upload.id,
+      setTimeout(() => {
+        void renameDocument(projectId, documentId, room).catch(() => undefined);
+      }, RENAME_DELAY_MS),
+    );
+  }
 
   async function addFiles(files: Iterable<File>) {
     const all = [...files];
     const images = all.filter((file) => ACCEPTED.includes(file.type));
     const added = await Promise.all(images.map(readUpload));
-    setUploads((current) => {
-      const known = new Set(current.map(({ id }) => id));
-      return [...current, ...added.filter(({ id }) => !known.has(id))];
-    });
+    const known = new Set(previews.current.map(({ id }) => id));
+    const fresh = added.filter(({ id }) => !known.has(id));
+    setUploads((current) => [...current, ...fresh]);
+    for (const upload of fresh) {
+      if (upload.problem) continue;
+      const file = images.find(
+        (candidate) =>
+          `${candidate.name}-${candidate.size}-${candidate.lastModified}` ===
+          upload.id,
+      );
+      if (file) void keep(upload, file);
+    }
     const unusable = added.filter(({ problem }) => problem).length;
     const skipped = all.length - images.length;
     setAnnouncement(
@@ -428,7 +656,10 @@ export default function CapturePage() {
   const dragging = useWindowDrag(!sample, (files) => void addFiles(files));
 
   function remove(upload: Upload) {
-    URL.revokeObjectURL(upload.preview);
+    if (upload.preview.startsWith("blob:")) URL.revokeObjectURL(upload.preview);
+    if (upload.documentId) {
+      void deleteDocument(projectId, upload.documentId).catch(() => undefined);
+    }
     setUploads((current) => current.filter(({ id }) => id !== upload.id));
     setAnnouncement(`Removed ${upload.room || upload.name}.`);
     addButton.current?.focus();
@@ -444,9 +675,15 @@ export default function CapturePage() {
     void addFiles(files);
   }
 
-  function openSample() {
-    const opened = openSampleProject(SAMPLE.name, projectId, SAMPLE_SEED);
-    navigate(`/p/${opened.id}/capture`, { state: { typing: true } });
+  async function openSample() {
+    try {
+      const opened = await openSampleProject(SAMPLE.name, projectId, SAMPLE_SEED);
+      navigate(`/p/${opened.id}/capture`, { state: { typing: true } });
+    } catch (error) {
+      setAnnouncement(
+        `The sample could not be opened: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   function leaveSample() {
@@ -556,16 +793,14 @@ export default function CapturePage() {
                     <PanoTile
                       key={upload.id}
                       src={upload.preview}
-                      meta={upload.pixels ?? upload.megabytes}
+                      meta={
+                        upload.saving
+                          ? "Saving…"
+                          : (upload.pixels ?? upload.megabytes)
+                      }
                       problem={upload.problem}
                       room={upload.room}
-                      onRoom={(room) =>
-                        setUploads((current) =>
-                          current.map((item) =>
-                            item.id === upload.id ? { ...item, room } : item,
-                          ),
-                        )
-                      }
+                      onRoom={(room) => rename(upload, room)}
                       onRemove={() => remove(upload)}
                     />
                   ))}
@@ -701,7 +936,15 @@ export default function CapturePage() {
           <AnimatePresence initial={false}>
             {showDoor && <SampleDoor key="door" onOpen={openSample} />}
           </AnimatePresence>
-          <WorldCard world={world} sample={sample} />
+          <WorldCard
+            world={world}
+            sample={sample}
+            own={own}
+            worldDir={own.worldDir}
+            panoramas={uploads.filter(
+              ({ documentId, problem }) => documentId && !problem,
+            )}
+          />
         </div>
       </div>
     </>

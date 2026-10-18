@@ -27,8 +27,8 @@ import { Link, useNavigate } from "react-router";
 import { NumberField } from "@/components/ui/number-field";
 import { WorldView } from "@/components/viewer/WorldView";
 import { springs } from "@/lib/motion";
-import { projectKey, useProjectId, useProjectPath } from "@/lib/projects";
-import { readJson, writeJson } from "@/lib/storage";
+import { useProjectId, useProjectPath } from "@/lib/projects";
+import { getState, setState } from "@/lib/project-store";
 import { ui } from "@/lib/ui";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,7 @@ import {
   type CostEstimate,
   designChanges,
   estimateCosts,
+  latestRun,
   scoutEquipment,
   streamRun,
 } from "@/twin/api";
@@ -70,16 +71,15 @@ import {
   MACHINES_KEY,
   MAX_DAYS,
   ROLE_INFO,
-  RUN_KEY,
   SCENARIO_KEY,
   type SavedMachine,
   type StoredRun,
-  WORLD_DIR,
   buildGraph,
   clock,
   daysOf,
   useStored,
 } from "@/twin/project";
+import { useProjectWorld } from "@/twin/world";
 import {
   type Change,
   type Measured,
@@ -170,6 +170,30 @@ function pinNotes(changes: Change[], edges: Flow["links"]) {
   return notes;
 }
 
+/**
+ * The project's latest run, loaded from the server, where the API keeps each
+ * finished run with its event log. A run made on this page is shown at once.
+ */
+function useLatestRun(projectId: string) {
+  const [run, setRun] = useState<StoredRun | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    latestRun<StoredRun>(projectId)
+      .then((found) => {
+        // A run started meanwhile is newer than what the server had.
+        if (!cancelled) setRun((current) => current ?? found);
+      })
+      .catch(() => undefined)
+      .finally(() => !cancelled && setLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+  return [run, setRun, loaded] as const;
+}
+
 function Decision({ record }: { record: DecisionRecord }) {
   return (
     <li
@@ -195,6 +219,7 @@ function Decision({ record }: { record: DecisionRecord }) {
 export default function ResultsPage() {
   const path = useProjectPath();
   const projectId = useProjectId();
+  const { worldDir } = useProjectWorld(projectId);
   const desktop = useMediaQuery("(min-width: 1024px)");
   const navigate = useNavigate();
 
@@ -208,7 +233,7 @@ export default function ResultsPage() {
     DEFAULT_SCENARIO,
   );
   const [crew] = useStored<CrewSettings>(AGENTS_KEY, DEFAULT_CREW);
-  const [run, setRun, runLoaded] = useStored<StoredRun | null>(RUN_KEY, null);
+  const [run, setRun, runLoaded] = useLatestRun(projectId);
   const [kept, setKept] = useStored<Change[]>(ACCEPTED_KEY, NO_CHANGES);
   const [history, setHistory] = useStored<RedesignVersion[]>(
     HISTORY_KEY,
@@ -292,6 +317,8 @@ export default function ResultsPage() {
           seed,
           tickMinutes: crew.tickMinutes,
           days,
+          // The API keeps the finished run with the project.
+          projectId,
         },
         (line) => {
           if (line.type === "start") {
@@ -449,15 +476,17 @@ export default function ResultsPage() {
   const [chat, setChat] = useState<DesignChatMessage[]>([]);
   const [chatLoaded, setChatLoaded] = useState(false);
   const [asking, setAsking] = useState(false);
-  const chatKey = projectKey(projectId, DESIGN_CHAT_KEY);
-
+  // Saved with the project; it has loaded before this step shows.
   useEffect(() => {
-    setChat(readJson<DesignChatMessage[]>(chatKey) ?? []);
+    setChat(
+      (getState(projectId, DESIGN_CHAT_KEY) as DesignChatMessage[] | undefined) ??
+        [],
+    );
     setChatLoaded(true);
-  }, [chatKey]);
+  }, [projectId]);
   useEffect(() => {
-    if (chatLoaded) writeJson(chatKey, chat.slice(-CHAT_LIMIT));
-  }, [chat, chatLoaded, chatKey]);
+    if (chatLoaded) setState(projectId, DESIGN_CHAT_KEY, chat.slice(-CHAT_LIMIT));
+  }, [chat, chatLoaded, projectId]);
 
   // Each measurement is the same shift on standard rules, so a set of
   // changes always measures the same: keep the answers for this run.
@@ -831,12 +860,14 @@ export default function ResultsPage() {
         ),
         currency,
       };
-      const key = projectKey(projectId, APPLIED_KEY);
-      writeJson(
-        key,
-        [...(readJson<AppliedRedesign[]>(key) ?? []), record].slice(
-          -KEPT_APPLIED,
-        ),
+      setState(
+        projectId,
+        APPLIED_KEY,
+        [
+          ...((getState(projectId, APPLIED_KEY) as AppliedRedesign[] | undefined) ??
+            []),
+          record,
+        ].slice(-KEPT_APPLIED),
       );
     }
     const next = applyToTwin({ machines, flow, scenario }, kept);
@@ -1115,7 +1146,7 @@ export default function ResultsPage() {
       <div className="relative min-w-0 flex-1 overflow-hidden bg-[#14140f]">
         <div className="absolute inset-0">
           <WorldView
-            worldDir={WORLD_DIR}
+            worldDir={worldDir}
             cameraHeightMetres={CAMERA_HEIGHT_M}
             items={items}
             flyers={showRedesign ? [] : flyers}

@@ -10,8 +10,8 @@ import {
   buildGraph,
   useStored,
 } from "@/twin/project";
-import { projectKey, useProjectId, useProjectPath } from "@/lib/projects";
-import { readJson, writeJson } from "@/lib/storage";
+import { useProjectId, useProjectPath } from "@/lib/projects";
+import { getState, setState } from "@/lib/project-store";
 import { applyAnswer, valueOf } from "@/scenario/fields";
 import { ScenarioChat, type ScenarioChatMessage } from "@/scenario/ScenarioChat";
 import { describeScenario } from "@/twin/api";
@@ -88,17 +88,19 @@ export default function ScenarioPage() {
 
   // --- describing the scenario in words --------------------------------------
   const projectId = useProjectId();
-  const chatKey = projectKey(projectId, CHAT_KEY);
   const [chat, setChat] = useState<ScenarioChatMessage[]>([]);
   const [chatLoaded, setChatLoaded] = useState(false);
   const [asking, setAsking] = useState(false);
+  // Saved with the project; it has loaded before this step shows.
   useEffect(() => {
-    setChat(readJson<ScenarioChatMessage[]>(chatKey) ?? []);
+    setChat(
+      (getState(projectId, CHAT_KEY) as ScenarioChatMessage[] | undefined) ?? [],
+    );
     setChatLoaded(true);
-  }, [chatKey]);
+  }, [projectId]);
   useEffect(() => {
-    if (chatLoaded) writeJson(chatKey, chat.slice(-CHAT_LIMIT));
-  }, [chat, chatLoaded, chatKey]);
+    if (chatLoaded) setState(projectId, CHAT_KEY, chat.slice(-CHAT_LIMIT));
+  }, [chat, chatLoaded, projectId]);
 
   async function ask(text: string) {
     const request: ScenarioChatMessage = {

@@ -218,12 +218,16 @@ export function viewsFor(
   };
 }
 
-let panorama: Promise<ImageData> | null = null;
+const panoramas = new Map<string, Promise<ImageData>>();
 
-/** The panorama's pixels, loaded once per page. */
+/** A panorama's pixels, loaded once per page for each panorama. */
 function loadPanorama(url: string): Promise<ImageData> {
-  panorama ??= new Promise<ImageData>((resolve, reject) => {
+  const known = panoramas.get(url);
+  if (known) return known;
+  const loading = new Promise<ImageData>((resolve, reject) => {
     const image = new Image();
+    // A project's own world is served by the API; reading its pixels needs CORS.
+    image.crossOrigin = "anonymous";
     image.onload = () => {
       const canvas = document.createElement("canvas");
       canvas.width = image.naturalWidth;
@@ -237,10 +241,11 @@ function loadPanorama(url: string): Promise<ImageData> {
       reject(new Error("The plant's panorama could not be loaded"));
     image.src = url;
   }).catch((error: unknown) => {
-    panorama = null;
+    panoramas.delete(url);
     throw error;
   });
-  return panorama;
+  panoramas.set(url, loading);
+  return loading;
 }
 
 const radians = (value: number) => (value * Math.PI) / 180;

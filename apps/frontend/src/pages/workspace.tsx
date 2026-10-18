@@ -50,6 +50,8 @@ function NameDialog({
   const navigate = useNavigate();
   const renaming = editing?.mode === "rename" ? editing.project : null;
   const [name, setName] = useState(renaming?.name ?? "");
+  const [creating, setCreating] = useState(false);
+  const [problem, setProblem] = useState("");
   const trimmed = name.trim();
 
   return (
@@ -64,8 +66,14 @@ function NameDialog({
               renameProject(renaming.id, trimmed);
               onClose();
             } else {
-              const project = createProject(trimmed);
-              navigate(`/p/${project.id}/capture`);
+              setCreating(true);
+              setProblem("");
+              createProject(trimmed)
+                .then((project) => navigate(`/p/${project.id}/capture`))
+                .catch((error: unknown) =>
+                  setProblem(error instanceof Error ? error.message : String(error)),
+                )
+                .finally(() => setCreating(false));
             }
           }}
         >
@@ -95,12 +103,17 @@ function NameDialog({
               onChange={(event) => setName(event.target.value)}
             />
           </div>
+          {problem && (
+            <p role="alert" className="text-sm text-destructive">
+              The project could not be created: {problem}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!trimmed}>
-              {renaming ? "Save" : "Create project"}
+            <Button type="submit" disabled={!trimmed || creating}>
+              {renaming ? "Save" : creating ? "Creating…" : "Create project"}
               {!renaming && <ArrowRightIcon />}
             </Button>
           </div>

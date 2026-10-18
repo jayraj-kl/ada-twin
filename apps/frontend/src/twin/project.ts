@@ -10,15 +10,24 @@ import {
   param,
 } from "@repo/sim";
 import { useCallback, useEffect, useState } from "react";
-import { projectKey, touchProject, useProjectId } from "@/lib/projects";
+import {
+  SERVER_KEYS,
+  STATE_KEYS,
+  setField,
+  setState,
+  useField,
+  useLoadStatus,
+  useStateValue,
+} from "@/lib/project-store";
+import { projectKey, useProjectId } from "@/lib/projects";
 import { EXTRA_DEFAULTS, type Flow } from "./flow";
 
-// Everything about a project lives in this browser, under the project's own
-// keys, until projects are stored on the server.
+// A project's values, by the name each is stored under. The core of the
+// project (SERVER_KEYS in lib/project-store.ts) is saved on the server; the
+// rest still lives in this browser, under the project's own keys.
 export const MACHINES_KEY = "twin-machines";
 export const SCENARIO_KEY = "twin-scenario";
 export const AGENTS_KEY = "twin-agents";
-export const RUN_KEY = "twin-run";
 export const ACCEPTED_KEY = "twin-accepted";
 // Cost estimates for recommended changes, by currency and change, so the web
 // is not searched again each time the report opens.
@@ -38,7 +47,7 @@ export const MAX_DAYS = 60;
 
 // Written by `pnpm --filter @repo/scripts fetch-world <worldId>`.
 export const WORLD_DIR = "/worlds/current";
-export const CAMERA_HEIGHT_M = 3.2;
+export const CAMERA_HEIGHT_M = 1.65;
 
 export type Point = [number, number, number];
 
@@ -293,16 +302,45 @@ export interface StoredRun {
 export const daysOf = (run: StoredRun) => run.days ?? [run.baseline];
 
 /**
- * A value kept in this browser's storage. `loaded` turns true once the saved
- * value, if any, has been read; until then the value is the fallback.
+ * A value of the current project. The project's core and its page state are
+ * saved on the server (loaded before any step shows, so they are ready at
+ * once); a few browser-only settings stay in this browser. `loaded` turns
+ * true once the saved value, if any, has been read; until then the value is
+ * the fallback.
  */
 export function useStored<T>(name: string, fallback: T) {
   const projectId = useProjectId();
-  const key = projectKey(projectId, name);
+  const field = SERVER_KEYS[name as keyof typeof SERVER_KEYS] ?? null;
+  const stateKey = !field && STATE_KEYS.has(name) ? name : null;
+  const onServer = field !== null || stateKey !== null;
+  const local = useLocalStored(
+    onServer ? null : projectKey(projectId, name),
+    fallback,
+  );
+  const savedField = useField(projectId, field);
+  const savedState = useStateValue(projectId, stateKey);
+  const status = useLoadStatus(projectId);
+  const storeServer = useCallback(
+    (next: T) => {
+      if (field) setField(projectId, field, next);
+      else if (stateKey) setState(projectId, stateKey, next);
+    },
+    [projectId, field, stateKey],
+  );
+  if (!onServer) return local;
+  const saved = field ? savedField : savedState;
+  // A value the project never set reads as the fallback, as an unset key did.
+  const value = saved === undefined || saved === null ? fallback : (saved as T);
+  return [value, storeServer, status === "ready"] as const;
+}
+
+/** A value kept in this browser's storage under `key`; null keeps nothing. */
+function useLocalStored<T>(key: string | null, fallback: T) {
   const [value, setValue] = useState(fallback);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    if (key === null) return;
     try {
       const saved = localStorage.getItem(key);
       if (saved !== null) setValue(JSON.parse(saved) as T);
@@ -315,14 +353,14 @@ export function useStored<T>(name: string, fallback: T) {
   const store = useCallback(
     (next: T) => {
       setValue(next);
+      if (key === null) return;
       try {
         localStorage.setItem(key, JSON.stringify(next));
       } catch {
         // Not being able to save is not worth interrupting the user for.
       }
-      touchProject(projectId);
     },
-    [key, projectId],
+    [key],
   );
   return [value, store, loaded] as const;
 }

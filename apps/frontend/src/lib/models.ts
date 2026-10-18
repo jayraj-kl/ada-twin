@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { readJson, writeJson } from "./storage";
 
-export const API = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+export const API = import.meta.env.VITE_API_URL!;
 
 // The picked models apply to every project in this browser.
 const KEY = "ada-twin:models";

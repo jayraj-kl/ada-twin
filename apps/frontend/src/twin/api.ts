@@ -142,7 +142,8 @@ export type RunLine =
   | { type: "decision"; record: DecisionRecord }
   /** What happened on the floor since the last line, while it runs. */
   | { type: "events"; events: SimEvent[] }
-  | { type: "done"; kpis: Kpis; events: SimEvent[] }
+  /** `runId` once the run is kept with the project. */
+  | { type: "done"; kpis: Kpis; events: SimEvent[]; runId?: string }
   /** After `done`, with agents: their way of working as fixed rules. */
   | { type: "playbook"; playbook: Playbook | null; problem?: string }
   | { type: "error"; message: string };
@@ -185,10 +186,16 @@ export async function streamRun(
 export async function findParameters(
   machine: Machine,
   documents: File[],
+  /** Documents kept with the project, read by the API itself. */
+  kept?: { projectId: string; ids: string[] },
 ): Promise<{ params: Record<string, Param>; assumed: string[] }> {
   const form = new FormData();
   form.set("machine", JSON.stringify(machine));
   for (const document of documents) form.append("documents", document);
+  if (kept && kept.ids.length > 0) {
+    form.set("projectId", kept.projectId);
+    for (const id of kept.ids) form.append("documentIds", id);
+  }
   return unwrap(
     await apiFetch(`/twin/parameters`, { method: "POST", body: form }),
   );
@@ -328,9 +335,12 @@ export interface InlineImage {
   data: string;
 }
 
-/** One image Nano Banana drew, with the turn that revises it next time. */
+/**
+ * One image Nano Banana drew. Kept in the project's files when `stored`, and
+ * then revised by its id; otherwise with the turn that revises it next time.
+ */
 export type Illustration =
-  | { image: InlineImage | null; text: string; turn: unknown }
+  | { image: InlineImage | null; text: string; turn?: unknown; stored?: boolean }
   | { error: string };
 
 /** Draws the redesign into a photo of the plant, `count` times over. */
@@ -339,6 +349,10 @@ export async function illustrate(body: {
   subject: string;
   changes: string[];
   previous?: unknown;
+  /** A kept drawing to revise, instead of sending its turn. */
+  previousImage?: { projectId: string; id: string };
+  /** The ids to keep each drawing under, one per image asked for. */
+  store?: { projectId: string; ids: string[] };
   notes: string[];
   message: string;
   count: number;
@@ -394,3 +408,109 @@ export async function describeScenario(
   });
   return unwrap(response);
 }
+
+/** A panorama or document the user uploaded, kept with the project. */
+export interface StoredDocument {
+  id: string;
+  kind: "panorama" | "document";
+  machineId?: string;
+  label?: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  createdAt: number;
+}
+
+/** Where the browser loads a kept file, such as an <img> source. */
+export const imageUrl = (projectId: string, imageId: string) =>
+  `${API}/projects/${projectId}/images/${encodeURIComponent(imageId)}`;
+export const documentUrl = (projectId: string, documentId: string) =>
+  `${API}/projects/${projectId}/documents/${documentId}`;
+
+export async function uploadDocument(
+  projectId: string,
+  file: File,
+  details: { kind: StoredDocument["kind"]; machineId?: string; label?: string },
+): Promise<StoredDocument> {
+  const form = new FormData();
+  form.set("file", file);
+  form.set("kind", details.kind);
+  if (details.machineId) form.set("machineId", details.machineId);
+  if (details.label) form.set("label", details.label);
+  const response = await apiFetch(`/projects/${projectId}/documents`, {
+    method: "POST",
+    body: form,
+  });
+  return (await unwrap<{ document: StoredDocument }>(response)).document;
+}
+
+export async function listDocuments(
+  projectId: string,
+): Promise<StoredDocument[]> {
+  const response = await apiFetch(`/projects/${projectId}/documents`);
+  return (await unwrap<{ documents: StoredDocument[] }>(response)).documents;
+}
+
+export async function renameDocument(
+  projectId: string,
+  documentId: string,
+  label: string,
+) {
+  await apiFetch(`/projects/${projectId}/documents/${documentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label }),
+  });
+}
+
+export async function deleteDocument(projectId: string, documentId: string) {
+  await apiFetch(`/projects/${projectId}/documents/${documentId}`, {
+    method: "DELETE",
+  });
+}
+
+/** The project's most recent run, as the results step replays it; null if none. */
+export async function latestRun<Run>(projectId: string): Promise<Run | null> {
+  const response = await apiFetch(`/projects/${projectId}/runs/latest`);
+  return (await unwrap<{ run: Run | null }>(response)).run;
+}
+
+/** A project's own 3D world, while World Labs builds it and once it is ready. */
+export interface ProjectWorld {
+  id: string;
+  status: "generating" | "ready" | "failed";
+  error?: string;
+  /** What World Labs says it is doing, while it builds. */
+  progress?: string;
+  startedAt: number;
+}
+
+/** The project's world; null while it uses the bundled demo world. */
+export async function getProjectWorld(
+  projectId: string,
+): Promise<ProjectWorld | null> {
+  const response = await apiFetch(`/projects/${projectId}/world`);
+  return (await unwrap<{ world: ProjectWorld | null }>(response)).world;
+}
+
+/** Starts building the project's world from one of its kept panoramas. */
+export async function startProjectWorld(
+  projectId: string,
+  documentId: string,
+): Promise<ProjectWorld> {
+  const response = await apiFetch(`/projects/${projectId}/world`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId }),
+  });
+  return (await unwrap<{ world: ProjectWorld }>(response)).world;
+}
+
+/** Goes back to the bundled demo world. */
+export async function resetProjectWorld(projectId: string) {
+  await apiFetch(`/projects/${projectId}/world`, { method: "DELETE" });
+}
+
+/** Where a ready world's files load from, named as the viewer expects. */
+export const projectWorldDir = (projectId: string) =>
+  `${API}/projects/${projectId}/world/files`;

@@ -7,8 +7,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { projectKey, useProjectId, useProjectPath } from "@/lib/projects";
-import { readJson, writeJson } from "@/lib/storage";
+import { useProjectId, useProjectPath } from "@/lib/projects";
+import { getState, setState } from "@/lib/project-store";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -18,7 +18,6 @@ import {
   THREAD_LIMIT,
   pickedImage,
 } from "@/plant/ImageChat";
-import { imageKey, loadImage, saveImage } from "@/plant/images";
 import {
   type AppliedRedesign,
   daysFor,
@@ -30,16 +29,20 @@ import {
 import { type PlantView, cutView, dataUrl, viewsFor } from "@/plant/views";
 import { moneyRange, perPart, signed } from "@/results/format";
 import { originLabel } from "@/results/tabs";
-import { type InlineImage, explainChanges, illustrate } from "@/twin/api";
+import {
+  type InlineImage,
+  explainChanges,
+  illustrate,
+  imageUrl,
+} from "@/twin/api";
 import {
   APPLIED_KEY,
   PLANT_CHAT_KEY,
-  WORLD_DIR,
   useStored,
 } from "@/twin/project";
+import { useProjectWorld } from "@/twin/world";
 
 const NO_APPLIED: AppliedRedesign[] = [];
-const PANORAMA = `${WORLD_DIR}/pano.png`;
 
 type Threads = Record<string, Record<string, PlantMessage[]>>;
 
@@ -58,6 +61,7 @@ const when = (at: number) =>
 
 export default function PlantPage() {
   const projectId = useProjectId();
+  const { panoramaUrl } = useProjectWorld(projectId);
   const path = useProjectPath();
   const [applied, setApplied, loaded] = useStored(APPLIED_KEY, NO_APPLIED);
   const [count, setCount] = useStored("twin-plant-count", 2);
@@ -184,14 +188,14 @@ export default function PlantPage() {
 
   const [threads, setThreads] = useState<Threads>({});
   const [threadsLoaded, setThreadsLoaded] = useState(false);
-  const threadsKey = projectKey(projectId, PLANT_CHAT_KEY);
+  // Saved with the project; it has loaded before this step shows.
   useEffect(() => {
-    setThreads(readJson<Threads>(threadsKey) ?? {});
+    setThreads((getState(projectId, PLANT_CHAT_KEY) as Threads | undefined) ?? {});
     setThreadsLoaded(true);
-  }, [threadsKey]);
+  }, [projectId]);
   useEffect(() => {
-    if (threadsLoaded) writeJson(threadsKey, threads);
-  }, [threads, threadsLoaded, threadsKey]);
+    if (threadsLoaded) setState(projectId, PLANT_CHAT_KEY, threads);
+  }, [threads, threadsLoaded, projectId]);
   const threadOf = (view: PlantView) =>
     (record && threads[record.id]?.[view.id]) ?? [];
   const setThread = (
@@ -216,13 +220,15 @@ export default function PlantPage() {
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
-    const cached = originals.current.get(active.id);
+    // Keyed by panorama too: building the project's world changes it.
+    const key = `${panoramaUrl}|${active.id}`;
+    const cached = originals.current.get(key);
     setOriginal(cached ? dataUrl(cached) : null);
     setOriginalProblem("");
     if (cached) return;
-    cutView(PANORAMA, active)
+    cutView(panoramaUrl, active)
       .then((image) => {
-        originals.current.set(active.id, image);
+        originals.current.set(key, image);
         if (!cancelled) setOriginal(dataUrl(image));
       })
       .catch((error: unknown) => {
@@ -234,10 +240,13 @@ export default function PlantPage() {
     return () => {
       cancelled = true;
     };
-  }, [active]);
+  }, [active, panoramaUrl]);
 
-  // The drawings, read from this browser's image store as threads need them.
-  const [images, setImages] = useState<Record<string, string>>({});
+  // The drawings are kept in the project's files and load from there. One
+  // the API could not keep lives only in this page, with the turn that
+  // revises it.
+  const [unkept, setUnkept] = useState<Record<string, string>>({});
+  const unkeptTurns = useRef(new Map<string, unknown>());
   const imageIds = useMemo(
     () =>
       Object.values(record ? (threads[record.id] ?? {}) : {})
@@ -246,32 +255,20 @@ export default function PlantPage() {
         .filter((id): id is string => Boolean(id)),
     [record, threads],
   );
-  useEffect(() => {
-    const missing = imageIds.filter((id) => !(id in images));
-    if (missing.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      missing.map(async (id) => {
-        const stored = await loadImage(imageKey(projectId, id)).catch(
-          () => undefined,
-        );
-        return [id, stored ? dataUrl(stored) : ""] as const;
-      }),
-    ).then((loaded) => {
-      if (!cancelled)
-        setImages((current) => ({ ...current, ...Object.fromEntries(loaded) }));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [imageIds, images, projectId]);
+  const images = useMemo(
+    () =>
+      Object.fromEntries(
+        imageIds.map((id) => [id, unkept[id] ?? imageUrl(projectId, id)]),
+      ),
+    [imageIds, unkept, projectId],
+  );
 
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
 
   async function send(text: string) {
     if (!record || !active) return;
-    const view = originals.current.get(active.id);
+    const view = originals.current.get(`${panoramaUrl}|${active.id}`);
     if (!view) return;
     const thread = threadOf(active);
     const recordId = record.id;
@@ -285,35 +282,37 @@ export default function PlantPage() {
     setPending(count);
     try {
       const picked = pickedImage(thread);
-      const previous = picked
-        ? (await loadImage(imageKey(projectId, picked)))?.turn
-        : undefined;
+      // A kept drawing is revised by its id; the API reads its turn itself.
+      const previousTurn = picked ? unkeptTurns.current.get(picked) : undefined;
+      const wanted = Array.from(
+        { length: count },
+        (_, index) => `${recordId}:${viewId}:${stamp}-${index}`,
+      );
       const answer = await illustrate({
         view,
         subject: active.subject,
         changes: active.lines,
-        previous,
+        previous: previousTurn,
+        previousImage:
+          picked && previousTurn === undefined
+            ? { projectId, id: picked }
+            : undefined,
+        store: { projectId, ids: wanted },
         notes: thread
           .filter(({ role }) => role === "user")
           .map(({ text }) => text),
         message: text,
         count,
       });
-      const ids = await Promise.all(
-        answer.results.map(async (result, index) => {
-          if ("error" in result || !result.image) return null;
-          const id = `${recordId}:${viewId}:${stamp}-${index}`;
-          await saveImage(imageKey(projectId, id), {
-            ...result.image,
-            turn: result.turn,
-          });
-          setImages((current) => ({
-            ...current,
-            [id]: dataUrl(result.image!),
-          }));
-          return id;
-        }),
-      );
+      const ids = answer.results.map((result, index) => {
+        if ("error" in result || !result.image) return null;
+        const id = wanted[index]!;
+        if (!result.stored) {
+          unkeptTurns.current.set(id, result.turn);
+          setUnkept((current) => ({ ...current, [id]: dataUrl(result.image!) }));
+        }
+        return id;
+      });
       const first = ids.findIndex(Boolean);
       const words = answer.results
         .map((result) => ("error" in result ? "" : result.text))
