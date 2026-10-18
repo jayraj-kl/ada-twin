@@ -7,7 +7,6 @@ const SERVICE = process.env.API_SERVICE ?? "ada-twin-api";
 const REGION = process.env.GCP_REGION ?? "africa-south1";
 const REPOSITORY = process.env.ARTIFACT_REPOSITORY ?? "ada-twin-cloud-run";
 const SQL_INSTANCE = process.env.SQL_INSTANCE ?? "ada-twin";
-const BUCKET = process.env.GCS_BUCKET ?? "gen-lang-client-0447144465-ada-twin-files";
 
 // gcloud is a .cmd shim on Windows, which only a shell can launch.
 const shell = process.platform === "win32";
@@ -40,6 +39,8 @@ if (!project || project === "(unset)") {
   );
   process.exit(1);
 }
+
+const BUCKET = process.env.GCS_BUCKET ?? `${project}-ada-twin-files`;
 
 const tag = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
 const image = `${REGION}-docker.pkg.dev/${project}/${REPOSITORY}/${SERVICE}:${tag}`;
