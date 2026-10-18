@@ -10,10 +10,12 @@ Paths in arguments are relative to this `scripts/` folder.
 
 ## Setup
 
-- **World Labs scripts** (`generate-pano`, `fetch-world`, `medsim-demo`): copy
-  `.env.example` to `.env` and set `WORLD_LABS_API_KEY`.
-- **`agent-demo`, `locate-demo`**: set `GOOGLE_CLOUD_PROJECT` in
-  `apps/api/.env` and run `gcloud auth application-default login` once.
+Every script reads the root `.env` (copy the root `.env.example`).
+
+- **World Labs scripts** (`generate-pano`, `fetch-world`, `medsim-demo`): set
+  `WORLD_LABS_API_KEY`.
+- **`agent-demo`, `locate-demo`**: set `GOOGLE_CLOUD_PROJECT` and run
+  `gcloud auth application-default login` once.
 
 ## Scripts
 

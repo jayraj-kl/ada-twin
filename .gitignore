@@ -44,3 +44,5 @@ drizzle/
 .agents/
 .claude/
 skills-lock.json
+
+apps/video/
