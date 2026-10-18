@@ -1,5 +1,7 @@
 export { averageKpis, simulateDays, spread, type Spread } from "./days";
 
+export { shiftCapacity, type Capacity } from "./capacity";
+
 export { applyDiffs, type GraphDiff, type NewMachineParams } from "./diff";
 
 export {

@@ -1,11 +1,9 @@
 import { type Scenario, applyScenario } from "@repo/sim";
 import { Link } from "react-router";
 import { useEffect, useMemo, useState } from "react";
-import { EMPTY_FLOW, FLOW_KEY, type Flow } from "@/twin/flow";
+import { EMPTY_FLOW, FLOW_KEY, type Flow, PROCESS_KEY } from "@/twin/flow";
 import {
-  DEFAULT_SCENARIO,
   MACHINES_KEY,
-  SCENARIO_KEY,
   type SavedMachine,
   buildGraph,
   useStored,
@@ -13,14 +11,21 @@ import {
 import { useProjectId, useProjectPath } from "@/lib/projects";
 import { getState, setState } from "@/lib/project-store";
 import { applyAnswer, valueOf } from "@/scenario/fields";
+import { usePlantScenario } from "@/scenario/plant";
 import { ScenarioChat, type ScenarioChatMessage } from "@/scenario/ScenarioChat";
-import { describeScenario } from "@/twin/api";
+import { describeScenario, suggestScenarios } from "@/twin/api";
 import { NumberField } from "@/components/ui/number-field";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
 const NO_MACHINES: SavedMachine[] = [];
 const CHAT_KEY = "twin-scenario-chat";
+// The AI's suggestions, kept with what they were written for.
+const SUGGESTIONS_KEY = "twin-scenario-suggestions";
+interface StoredSuggestions {
+  basis: string;
+  suggestions: string[];
+}
 // Enough to follow the conversation; older turns drop off.
 const CHAT_LIMIT = 40;
 
@@ -74,12 +79,13 @@ function NumberSetting({
 
 export default function ScenarioPage() {
   const path = useProjectPath();
-  const [scenario, setScenario] = useStored<Scenario>(
-    SCENARIO_KEY,
-    DEFAULT_SCENARIO,
-  );
   const [machines] = useStored(MACHINES_KEY, NO_MACHINES);
   const [flow] = useStored<Flow>(FLOW_KEY, EMPTY_FLOW);
+  const graph = useMemo(() => buildGraph(machines, flow), [machines, flow]);
+  // Sized to the plant until it is set here.
+  const { scenario, setScenario, saved, capacity, unit } =
+    usePlantScenario(graph);
+  const capacityPerShift = capacity && Math.round(capacity.perShift);
 
   const set = (change: Partial<Scenario>) =>
     setScenario({ ...scenario, ...change });
@@ -101,6 +107,53 @@ export default function ScenarioPage() {
   useEffect(() => {
     if (chatLoaded) setState(projectId, CHAT_KEY, chat.slice(-CHAT_LIMIT));
   }, [chat, chatLoaded, projectId]);
+
+  // Starting points written for this plant, asked for again only when its
+  // machines or process change. Null while they are being written.
+  const [process] = useStored(PROCESS_KEY, "");
+  const basis = useMemo(
+    () =>
+      JSON.stringify({
+        machines: machines.map(({ name, count }) => ({ name, count })),
+        process: process.trim(),
+        capacityPerShift,
+        unit,
+      }),
+    [machines, process, capacityPerShift, unit],
+  );
+  const [suggestions, setSuggestions] = useState<string[] | null>();
+  const wantsSuggestions = chatLoaded && chat.length === 0;
+  useEffect(() => {
+    if (!wantsSuggestions) return;
+    const saved = getState(projectId, SUGGESTIONS_KEY) as
+      | StoredSuggestions
+      | undefined;
+    if (saved?.basis === basis) {
+      setSuggestions(saved.suggestions);
+      return;
+    }
+    let cancelled = false;
+    setSuggestions(null);
+    const { machines: named, process: text, ...plant } = JSON.parse(basis) as {
+      machines: { name: string; count?: number }[];
+      process: string;
+      capacityPerShift?: number;
+      unit: string;
+    };
+    suggestScenarios({ machines: named, process: text || undefined, ...plant })
+      .then((written) => {
+        if (cancelled) return;
+        setSuggestions(written);
+        if (written.length > 0) {
+          setState(projectId, SUGGESTIONS_KEY, { basis, suggestions: written });
+        }
+      })
+      // The chat falls back to its own examples.
+      .catch(() => !cancelled && setSuggestions([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsSuggestions, basis, projectId]);
 
   async function ask(text: string) {
     const request: ScenarioChatMessage = {
@@ -126,6 +179,7 @@ export default function ScenarioPage() {
         scenario,
         machines.map(({ id, name }) => ({ id, name })),
         conversation,
+        { capacityPerShift, unit },
       );
       const proposes =
         answer.changes.length > 0 ||
@@ -175,7 +229,6 @@ export default function ScenarioPage() {
   }
 
   const effects = useMemo(() => {
-    const graph = buildGraph(machines, flow);
     const names = new Map(graph.nodes.map(({ id, name }) => [id, name]));
     try {
       const { adjustments } = applyScenario(graph, scenario);
@@ -199,7 +252,7 @@ export default function ScenarioPage() {
         problem: error instanceof Error ? error.message : String(error),
       };
     }
-  }, [machines, flow, scenario]);
+  }, [graph, scenario]);
 
   return (
     <>
@@ -214,6 +267,8 @@ export default function ScenarioPage() {
       <div className={ui.panel} style={{ marginBottom: 20 }}>
         <ScenarioChat
           messages={chat}
+          unit={unit}
+          suggestions={suggestions}
           busy={asking}
           onSend={ask}
           onAccept={(id) => decide(id, "accepted")}
@@ -225,7 +280,31 @@ export default function ScenarioPage() {
       <div className={ui.grid2}>
         <div className={ui.stack}>
           <div className={ui.panel}>
-            <div className={ui.panelTitle}>Conditions</div>
+            <div className={ui.panelTitle}>
+              Conditions
+              {saved ? (
+                <button
+                  type="button"
+                  onClick={() => setScenario(null)}
+                  title="Demand and targets go back to what this plant can make"
+                  className="text-xs font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  Size to this plant
+                </button>
+              ) : (
+                <span className={ui.hint}>sized to this plant</span>
+              )}
+            </div>
+            {capacityPerShift !== undefined && (
+              <p className={ui.hint} style={{ marginBottom: 12 }}>
+                At its current figures this plant can make about{" "}
+                {capacityPerShift} {unit} in one {scenario.shiftHours}-hour
+                shift, held back by{" "}
+                {graph.nodes.find(({ id }) => id === capacity?.bottleneck)
+                  ?.name ?? "its slowest station"}
+                .
+              </p>
+            )}
             <div className={ui.field} style={{ marginBottom: 12 }}>
               <label htmlFor="name">Name of this scenario</label>
               <input
@@ -249,7 +328,7 @@ export default function ScenarioPage() {
               <NumberSetting
                 id="demand"
                 label="Demand"
-                suffix="parts per shift"
+                suffix={`${unit} per shift`}
                 value={scenario.demandPerShift}
                 onChange={(value) => set({ demandPerShift: value })}
               />
@@ -303,14 +382,14 @@ export default function ScenarioPage() {
               <NumberSetting
                 id="ship"
                 label="Ship at least"
-                suffix="parts per shift"
+                suffix={`${unit} per shift`}
                 value={scenario.targets?.throughputPerShift}
                 onChange={(value) => setTarget({ throughputPerShift: value })}
               />
               <NumberSetting
                 id="wip"
                 label="Work in progress under"
-                suffix="parts"
+                suffix={unit}
                 value={scenario.targets?.maxAverageWip}
                 onChange={(value) => setTarget({ maxAverageWip: value })}
               />
@@ -339,7 +418,7 @@ export default function ScenarioPage() {
               id="briefing"
               rows={3}
               className={cn(ui.input, "h-auto w-full py-2")}
-              placeholder="For example: the cabinet has been tripping, so keep an eye on it. Missing 300 parts is the one thing management will not accept."
+              placeholder={`For example: the ${(machines.find(({ auxiliary }) => !auxiliary)?.name ?? "slowest machine").toLowerCase()} has been playing up, so keep an eye on it. Missing ${scenario.targets?.throughputPerShift ?? "the target of"} ${unit} is the one thing management will not accept.`}
               value={scenario.briefing ?? ""}
               onChange={(event) =>
                 set({ briefing: event.target.value || undefined })

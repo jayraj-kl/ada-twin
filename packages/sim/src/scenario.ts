@@ -12,6 +12,8 @@ const MTBF_FLOOR = 0.4;
 /** The external conditions and targets a factory is simulated against. */
 export interface Scenario {
   name: string;
+  /** What the plant makes, plural, as reasons name it: "parts" when unset. */
+  unit?: string;
   shiftHours: number;
   /** Parts released per shift across all sources; omit to keep the graph's rate. */
   demandPerShift?: number;
@@ -85,7 +87,7 @@ export function applyScenario(
           "interArrival",
           node.interArrival,
           wanted / node.interArrival.value,
-          `Demand of ${scenario.demandPerShift} parts per shift`,
+          `Demand of ${scenario.demandPerShift} ${scenario.unit ?? "parts"} per shift`,
         );
       }
       scale(

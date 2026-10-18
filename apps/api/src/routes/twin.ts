@@ -4,6 +4,7 @@ import {
   createGeminiModel,
   type CurrentFlow,
   type FlowMessage,
+  type PlantContext,
   describeScenario,
   draftFlow,
   estimateCosts,
@@ -11,6 +12,7 @@ import {
   locateMachines,
   needsInfo,
   reviseFlow,
+  suggestScenarios,
 } from "@repo/agent";
 import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
@@ -298,6 +300,53 @@ twin.post("/costs", async (c) => {
   });
 });
 
+/** What the plant can make and counts, as the scenario step sends it. */
+function plantContext(
+  body: { capacityPerShift?: unknown; unit?: unknown } | null,
+): PlantContext {
+  const capacity = Number(body?.capacityPerShift);
+  const unit =
+    typeof body?.unit === "string" ? body.unit.trim().slice(0, 30) : "";
+  return {
+    ...(Number.isFinite(capacity) && capacity > 0
+      ? { capacityPerShift: capacity }
+      : {}),
+    ...(unit ? { unit } : {}),
+  };
+}
+
+/**
+ * A few scenarios worth testing the plant against, in words, for the scenario
+ * step to offer. Takes { machines, process? } and answers { suggestions }.
+ */
+twin.post("/scenario/suggestions", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    machines?: unknown;
+    process?: unknown;
+    capacityPerShift?: unknown;
+    unit?: unknown;
+  } | null;
+  const machines = (Array.isArray(body?.machines) ? body.machines : [])
+    .filter(
+      (machine): machine is { name: string; count?: unknown } =>
+        typeof machine?.name === "string" && machine.name.trim() !== "",
+    )
+    .slice(0, 60)
+    .map(({ name, count }) => ({
+      name: name.trim().slice(0, 80),
+      count: Number.isInteger(count) ? (count as number) : undefined,
+    }));
+  const process =
+    typeof body?.process === "string" ? body.process.slice(0, 2000) : undefined;
+  return c.json({
+    suggestions: await suggestScenarios(model(), {
+      machines,
+      process,
+      plant: plantContext(body),
+    }),
+  });
+});
+
 /**
  * Turns a scenario described in plain words into proposed changes to its
  * settings and a crew briefing. Takes { scenario, machines, messages } and
@@ -308,6 +357,8 @@ twin.post("/scenario", async (c) => {
     scenario?: Scenario;
     machines?: unknown;
     messages?: unknown;
+    capacityPerShift?: unknown;
+    unit?: unknown;
   } | null;
   if (!body?.scenario || typeof body.scenario !== "object") {
     throw new HTTPException(400, { message: "Expected the current scenario" });
@@ -329,6 +380,7 @@ twin.post("/scenario", async (c) => {
       scenario: body.scenario,
       machines,
       messages,
+      plant: plantContext(body),
     }),
   );
 });

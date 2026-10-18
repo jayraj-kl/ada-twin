@@ -106,6 +106,26 @@ function fit(spec: FieldSpec, value: number | string | null) {
   return spec.kind === "count" ? Math.round(clamped) : clamped;
 }
 
+/** What the plant can make and what it counts, as both prompts tell it. */
+export interface PlantContext {
+  /** Units its bottleneck can finish in a shift, worked out from the twin. */
+  capacityPerShift?: number;
+  /** What it makes, plural: "parts", "batches", "motors". */
+  unit?: string;
+}
+
+function plantLines({ capacityPerShift, unit }: PlantContext): string[] {
+  const counted = unit?.trim() || "parts";
+  return [
+    `The plant counts its work in ${counted}; "parts" in the settings below means ${counted}.`,
+    ...(capacityPerShift && capacityPerShift > 0
+      ? [
+          `At its current figures the plant can finish about ${Math.round(capacityPerShift)} ${counted} in an 8-hour shift. Size amounts against that: a rush order is somewhat above it, a quiet shift well below it. Never suggest amounts many times larger.`,
+        ]
+      : []),
+  ];
+}
+
 const show = (value: number | string | undefined) =>
   value === undefined ? "not set" : JSON.stringify(value);
 
@@ -122,9 +142,10 @@ export async function describeScenario(
     /** The plant's machines, so it can name them. */
     machines: { id: string; name: string }[];
     messages: DesignMessage[];
+    plant?: PlantContext;
   },
 ): Promise<ScenarioAnswer> {
-  const { scenario, machines, messages } = options;
+  const { scenario, machines, messages, plant = {} } = options;
   const request = messages.at(-1);
   if (!request || request.role !== "user" || !request.text.trim()) {
     throw new Error("The last message has to be the user's description");
@@ -142,6 +163,7 @@ export async function describeScenario(
       `- briefing (what the crew of agents running the shift is told, beyond the targets): ${show(scenario.briefing)}`,
       "",
       `The plant's machines: ${machines.map(({ name }) => name).join(", ") || "none listed"}.`,
+      ...plantLines(plant),
       "",
       ...(messages.length > 1
         ? [
@@ -185,4 +207,65 @@ export async function describeScenario(
       .map((item) => item.trim())
       .filter(Boolean),
   };
+}
+
+const Suggestions = z.object({
+  suggestions: z.array(z.string()).default([]),
+});
+
+/** How many starting points the scenario step offers. */
+const SUGGESTION_COUNT = 3;
+
+/**
+ * A few scenarios worth testing this plant against, written as the user
+ * would describe them ("A heatwave week with a rush order and two fitters
+ * off sick"), for the scenario step to offer before anything is typed. Each
+ * is one the settings above can express, so describeScenario can set it up.
+ */
+export async function suggestScenarios(
+  ask: AskModel,
+  options: {
+    /** The plant's machines, so the suggestions name what is on its floor. */
+    machines: { name: string; count?: number }[];
+    /** How material moves through the floor, in the user's words. */
+    process?: string;
+    plant?: PlantContext;
+  },
+): Promise<string[]> {
+  const { machines, process, plant = {} } = options;
+  const reply = await ask({
+    task: "suggest-scenarios",
+    instruction:
+      "You suggest realistic conditions to stress-test a factory's digital twin against, in the plain words a plant manager would use.",
+    prompt: [
+      `The plant's machines: ${
+        machines
+          .map(({ name, count }) => (count && count > 1 ? `${name} ×${count}` : name))
+          .join(", ") || "none listed yet"
+      }.`,
+      ...(process?.trim()
+        ? [`How material moves through the floor:\n"""\n${process.trim()}\n"""`]
+        : []),
+      ...plantLines(plant),
+      "",
+      "The simulation can change only these things for a shift:",
+      ...FIELDS.filter(({ field }) => field !== "name").map(
+        ({ field, meaning }) => `- ${field}: ${meaning}`,
+      ),
+      "",
+      `Suggest ${SUGGESTION_COUNT} different scenarios this plant should be tested against. Each is one sentence of at most 15 words, as the user would type it, such as "A heatwave week with a rush order of 400 parts and two fitters off sick".`,
+      "Make them differ: for example one about heat or demand, one about staff or maintenance, one about supply. Name this plant's own machines or products where it helps. Use only conditions the settings above can express: no events at a set time, and no single machine out of action.",
+      'Answer with only JSON: {"suggestions": [string]}.',
+    ].join("\n"),
+  });
+  const seen = new Set<string>();
+  return Suggestions.parse(parseJsonReply(reply.text))
+    .suggestions.map((text) => text.trim().replace(/^["']|["']$/g, ""))
+    .filter((text) => {
+      const key = text.toLowerCase();
+      if (!text || text.length > 140 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, SUGGESTION_COUNT);
 }

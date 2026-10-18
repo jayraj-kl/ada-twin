@@ -289,6 +289,21 @@ export interface ScoutedChange extends DesignedChange {
   sources: { url: string; title?: string }[];
 }
 
+/** Scenarios worth testing this plant against, written by the AI. */
+export async function suggestScenarios(body: {
+  machines: { name: string; count?: number }[];
+  process?: string;
+  capacityPerShift?: number;
+  unit?: string;
+}): Promise<string[]> {
+  const response = await apiFetch(`/twin/scenario/suggestions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await unwrap<{ suggestions: string[] }>(response)).suggestions;
+}
+
 /** Asks the AI what equipment the plant is missing, from a run. */
 export async function scoutEquipment(body: {
   graph: FactoryGraph;
@@ -400,11 +415,13 @@ export async function describeScenario(
   scenario: Scenario,
   machines: { id: string; name: string }[],
   messages: { role: "user" | "assistant"; text: string }[],
+  /** What the plant can make in a shift, and what it counts it in. */
+  plant: { capacityPerShift?: number; unit: string },
 ): Promise<ScenarioAnswer> {
   const response = await apiFetch(`/twin/scenario`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scenario, machines, messages }),
+    body: JSON.stringify({ scenario, machines, messages, ...plant }),
   });
   return unwrap(response);
 }
@@ -505,6 +522,36 @@ export async function startProjectWorld(
   });
   return (await unwrap<{ world: ProjectWorld }>(response)).world;
 }
+
+/**
+ * Starts another world from a kept panorama, beside the project's own one,
+ * such as the plant redrawn with a redesign.
+ */
+export async function startOtherWorld(
+  projectId: string,
+  documentId: string,
+  name?: string,
+): Promise<ProjectWorld> {
+  const response = await apiFetch(`/projects/${projectId}/worlds`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ documentId, name }),
+  });
+  return (await unwrap<{ world: ProjectWorld }>(response)).world;
+}
+
+/** Such a world, while World Labs builds it and once it is ready. */
+export async function getOtherWorld(
+  projectId: string,
+  worldId: string,
+): Promise<ProjectWorld> {
+  const response = await apiFetch(`/projects/${projectId}/worlds/${worldId}`);
+  return (await unwrap<{ world: ProjectWorld }>(response)).world;
+}
+
+/** Where such a world's files load from. */
+export const otherWorldDir = (projectId: string, worldId: string) =>
+  `${API}/projects/${projectId}/worlds/${worldId}/files`;
 
 /** Goes back to the bundled demo world. */
 export async function resetProjectWorld(projectId: string) {

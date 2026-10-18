@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeScenario } from "@repo/agent";
+import { describeScenario, suggestScenarios } from "@repo/agent";
 import type { Scenario } from "@repo/sim";
 import { scripted } from "./support";
 
@@ -98,5 +98,63 @@ describe("describeScenario", () => {
       }),
     ).rejects.toThrow(/user/);
     expect(requests).toHaveLength(0);
+  });
+});
+
+describe("suggestScenarios", () => {
+  it("offers up to three distinct, short suggestions in the plant's terms", async () => {
+    const { ask, requests } = scripted(() => ({
+      suggestions: [
+        "A heatwave week with the boilers running flat out",
+        " A heatwave week with the boilers running flat out ",
+        "",
+        "Two of the three fitters off sick during a rush order",
+        "Half the feedwater supply lost for the shift",
+        "One more that is past the limit",
+      ],
+    }));
+    const suggestions = await suggestScenarios(ask, {
+      machines: [{ name: "Boilers", count: 2 }, { name: "Feed pumps" }],
+      process: "Water goes through the pumps, then the boilers.",
+    });
+    expect(suggestions).toEqual([
+      "A heatwave week with the boilers running flat out",
+      "Two of the three fitters off sick during a rush order",
+      "Half the feedwater supply lost for the shift",
+    ]);
+    expect(requests[0]!.task).toBe("suggest-scenarios");
+    expect(requests[0]!.prompt).toContain("Boilers ×2, Feed pumps");
+    expect(requests[0]!.prompt).toContain("then the boilers");
+  });
+
+  it("answers nothing when the model suggests nothing usable", async () => {
+    const { ask } = scripted(() => ({ suggestions: ["  "] }));
+    expect(await suggestScenarios(ask, { machines: [] })).toEqual([]);
+  });
+});
+
+describe("the plant's size in the prompts", () => {
+  it("tells the suggestions what the plant makes and how much", async () => {
+    const { ask, requests } = scripted(() => ({ suggestions: [] }));
+    await suggestScenarios(ask, {
+      machines: [{ name: "Boring mill" }],
+      plant: { capacityPerShift: 6.4, unit: "castings" },
+    });
+    expect(requests[0]!.prompt).toContain("counts its work in castings");
+    expect(requests[0]!.prompt).toContain("about 6 castings in an 8-hour shift");
+  });
+
+  it("tells the scenario writer too, and says parts when nothing is known", async () => {
+    const { ask, requests } = scripted(() => ({ reply: "Noted." }));
+    await describeScenario(ask, {
+      scenario,
+      machines,
+      messages: said("A rush order"),
+      plant: { capacityPerShift: 40, unit: "motors" },
+    });
+    await describeScenario(ask, { scenario, machines, messages: said("A rush order") });
+    expect(requests[0]!.prompt).toContain("about 40 motors");
+    expect(requests[1]!.prompt).toContain("counts its work in parts");
+    expect(requests[1]!.prompt).not.toContain("8-hour shift");
   });
 });

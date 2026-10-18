@@ -4,11 +4,11 @@ import type { ScenarioAnswer, ScenarioField } from "@/twin/api";
 /** How the form labels each setting, and how it shows a value. */
 export const FIELD_LABELS: Record<
   ScenarioField,
-  { label: string; show: (value: number | string) => string }
+  { label: string; show: (value: number | string, unit: string) => string }
 > = {
   name: { label: "Name", show: String },
   shiftHours: { label: "Shift length", show: (v) => `${v} h` },
-  demandPerShift: { label: "Demand", show: (v) => `${v} parts per shift` },
+  demandPerShift: { label: "Demand", show: (v, unit) => `${v} ${unit} per shift` },
   ambientTempC: { label: "Ambient temperature", show: (v) => `${v} °C` },
   supplyDisruption: {
     label: "Supply disrupted",
@@ -21,11 +21,11 @@ export const FIELD_LABELS: Record<
   maintenanceCrews: { label: "Maintenance crews", show: (v) => `${v}` },
   "targets.throughputPerShift": {
     label: "Ship at least",
-    show: (v) => `${v} parts`,
+    show: (v, unit) => `${v} ${unit}`,
   },
   "targets.maxAverageWip": {
     label: "Work in progress under",
-    show: (v) => `${v} parts`,
+    show: (v, unit) => `${v} ${unit}`,
   },
   "targets.maxDownShare": {
     label: "Any station down less than",

@@ -43,6 +43,8 @@ export { writePlaybook } from "./agents/playbook-writer";
 
 export {
   describeScenario,
+  suggestScenarios,
+  type PlantContext,
   type ScenarioAnswer,
   type ScenarioChange,
   type ScenarioField,

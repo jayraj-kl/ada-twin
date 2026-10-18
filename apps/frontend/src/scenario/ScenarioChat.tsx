@@ -27,9 +27,10 @@ export interface ScenarioChatMessage {
   failed?: boolean;
 }
 
+// Shown when the AI's suggestions are not to be had.
 const EXAMPLES = [
-  "A heatwave week with a rush order of 400 parts and two fitters off sick",
-  "A quiet Sunday shift with half the usual demand",
+  "A heatwave week with a rush order and half the maintenance crew off sick",
+  "A quiet shift with half the usual demand",
 ];
 
 /**
@@ -38,6 +39,8 @@ const EXAMPLES = [
  */
 export function ScenarioChat({
   messages,
+  unit,
+  suggestions,
   busy,
   onSend,
   onAccept,
@@ -45,6 +48,10 @@ export function ScenarioChat({
   onClear,
 }: {
   messages: ScenarioChatMessage[];
+  /** What the plant makes, as values are counted. */
+  unit: string;
+  /** Written by the AI for this plant; null while being written. */
+  suggestions?: string[] | null;
   busy: boolean;
   onSend: (text: string) => void;
   onAccept: (message: string) => void;
@@ -87,17 +94,39 @@ export function ScenarioChat({
       </div>
 
       {messages.length === 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {EXAMPLES.map((example) => (
-            <button
-              key={example}
-              type="button"
-              onClick={() => setDraft(example)}
-              className="rounded-full border border-border bg-card px-3 py-1 text-left text-xs text-muted-foreground outline-none hover:border-ink hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
-            >
-              {example}
-            </button>
-          ))}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted-foreground">
+            {suggestions === null
+              ? "Gemini is suggesting scenarios for this plant…"
+              : suggestions?.length
+                ? "Suggested by Gemini for this plant"
+                : "For example"}
+          </span>
+          <div
+            className="flex flex-wrap gap-1.5"
+            aria-busy={suggestions === null}
+          >
+            {suggestions === null
+              ? [176, 232, 200].map((width) => (
+                  <span
+                    key={width}
+                    style={{ width }}
+                    className="h-[26px] animate-pulse rounded-full bg-muted"
+                  />
+                ))
+              : (suggestions?.length ? suggestions : EXAMPLES).map(
+                  (example) => (
+                    <button
+                      key={example}
+                      type="button"
+                      onClick={() => setDraft(example)}
+                      className="rounded-full border border-border bg-card px-3 py-1 text-left text-xs text-muted-foreground outline-none hover:border-ink hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                    >
+                      {example}
+                    </button>
+                  ),
+                )}
+          </div>
         </div>
       ) : (
         <ol
@@ -126,6 +155,7 @@ export function ScenarioChat({
               {message.proposal && (
                 <Proposal
                   message={message}
+                  unit={unit}
                   onAccept={onAccept}
                   onDismiss={onDismiss}
                 />
@@ -193,10 +223,12 @@ export function ScenarioChat({
 
 function Proposal({
   message,
+  unit,
   onAccept,
   onDismiss,
 }: {
   message: ScenarioChatMessage;
+  unit: string;
   onAccept: (message: string) => void;
   onDismiss: (message: string) => void;
 }) {
@@ -204,7 +236,7 @@ function Proposal({
   const show = (field: keyof typeof FIELD_LABELS, value?: number | string | null) =>
     value === undefined || value === null
       ? "not set"
-      : FIELD_LABELS[field].show(value);
+      : FIELD_LABELS[field].show(value, unit);
   const proposesSomething = changes.length > 0 || briefing !== null;
   return (
     <div
