@@ -6,7 +6,7 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**",
-      "worlds/current/world-full.spz"
+      "worlds/*/world-full.spz"
     ],
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [
