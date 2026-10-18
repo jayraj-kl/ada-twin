@@ -11,7 +11,10 @@
         "GOOGLE_CLOUD_PROJECT",
         "GOOGLE_CLOUD_LOCATION",
         "GEMINI_MODEL",
-        "LOCATE_SPLIT"
+        "LOCATE_SPLIT",
+        "DATABASE_URL",
+        "GCS_BUCKET",
+        "GCS_PREFIX"
       ]
     }
   }

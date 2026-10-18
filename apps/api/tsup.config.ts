@@ -1,7 +1,8 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // The server, and the migrations the deploy runs before it.
+  entry: ["src/index.ts", "src/migrate.ts"],
   format: "esm",
   target: "node24",
   clean: true,

@@ -5,6 +5,8 @@ import { cors } from "hono/cors";
 import { log, requestLogger, unhandled } from "./logging";
 import { modelPicker, models } from "./routes/models";
 import { plant } from "./routes/plant";
+import { projectWorld } from "./routes/project-world";
+import { projects } from "./routes/projects";
 import { run } from "./routes/run";
 import { twin } from "./routes/twin";
 import { worlds } from "./routes/worlds";
@@ -31,6 +33,8 @@ app.get("/", (c) => {
 });
 
 app.route("/models", models);
+app.route("/projects", projects);
+app.route("/projects", projectWorld);
 app.route("/worlds", worlds);
 app.route("/twin", twin);
 app.route("/run", run);
@@ -55,6 +59,12 @@ const server = serve(
       log.warn(
         "GOOGLE_CLOUD_PROJECT is not set: twin, run and plant answer 503",
       );
+    }
+    if (!process.env.GCS_BUCKET) {
+      log.warn("GCS_BUCKET is not set: drawings, runs and uploads are not kept");
+    }
+    if (!process.env.DATABASE_URL) {
+      log.warn("DATABASE_URL is not set: projects answer 503");
     }
     if (!process.env.WORLD_LABS_API_KEY) {
       log.warn("WORLD_LABS_API_KEY is not set: worlds cannot be generated");
