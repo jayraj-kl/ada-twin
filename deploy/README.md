@@ -12,6 +12,23 @@ docker compose up --build
 
 This builds the same image Cloud Run gets and serves it on http://localhost:8080. Keys come from `apps/api/.env`. Use it to check a build before deploying; `pnpm dev` is still the way to develop.
 
+## Deploy the frontend to Firebase Hosting
+
+The frontend is served at https://ada-twin.web.app (Firebase Hosting site `ada-twin` in the same Google Cloud project). After the API is deployed:
+
+```sh
+pnpm run deploy:web
+```
+
+It builds `apps/frontend` with `VITE_API_URL` pointing at the Cloud Run API and runs `firebase deploy --only hosting` with `apps/frontend/firebase.json`. The browser calls the API directly rather than through a Hosting rewrite, because Hosting cuts rewritten requests off after 60 seconds and a shift streams for longer. The bundled demo world in `apps/frontend/public/worlds/current` (gitignored, fetched with `pnpm --filter @repo/scripts fetch-world <worldId>`) is deployed with it.
+
+One-time setup: install the CLI (`npm install -g firebase-tools`), run `firebase login`, and add Firebase to the project in the Firebase console. The API must allow the site's origins, which a deploy keeps once set:
+
+```sh
+# PowerShell
+$env:WEB_ORIGIN = "https://ada-twin.web.app,https://ada-twin.firebaseapp.com,http://localhost:3000"; pnpm run deploy
+```
+
 ## Deploy to Cloud Run
 
 After the one-time setup below, every deploy is:
@@ -20,7 +37,7 @@ After the one-time setup below, every deploy is:
 pnpm run deploy
 ```
 
-It builds `deploy/api.Dockerfile` on Cloud Build, pushes the image to Artifact Registry and rolls it out to Cloud Run. It prints the service URL when it finishes.
+It builds `deploy/api.Dockerfile` on Cloud Build and pushes the image to Artifact Registry. It then runs the database migrations as a Cloud Run job (`ada-twin-api-migrate`, the same image running `dist/migrate.js` on Cloud SQL's socket) and, once they succeed, rolls the image out to Cloud Run. A failed migration stops the deploy and the running revision keeps serving. It prints the service URL when it finishes.
 
 ### One-time setup
 
@@ -71,6 +88,26 @@ You need a Google Cloud account with billing enabled.
    gcloud projects add-iam-policy-binding <project-id> --member=serviceAccount:<project-number>-compute@developer.gserviceaccount.com --role=roles/aiplatform.user
    ```
 
+8. Create the database: a Cloud SQL Postgres instance in the deploy region, a database and a user, and store its connection string as a secret. On Cloud Run it connects through the instance's socket, so the string has no host:
+
+   ```sh
+   gcloud sql instances create ada-twin --database-version=POSTGRES_18 --region=africa-south1 --edition=ENTERPRISE --tier=db-g1-small
+   gcloud sql databases create ada-twin --instance=ada-twin
+   gcloud sql users create ada_app --instance=ada-twin --password=<password>
+   # postgresql://ada_app:<password>@/ada-twin?host=/cloudsql/<project-id>:africa-south1:ada-twin
+   gcloud secrets create DATABASE_URL --data-file=-
+   gcloud projects add-iam-policy-binding <project-id> --member=serviceAccount:<project-number>-compute@developer.gserviceaccount.com --role=roles/cloudsql.client
+   ```
+
+   The deploy's migrations job creates the tables.
+
+9. Create the bucket for project files (drawings, run logs, uploads). It stays private; the page reads files through the API:
+
+   ```sh
+   gcloud storage buckets create gs://<project-id>-ada-twin-files --location=africa-south1 --uniform-bucket-level-access --public-access-prevention
+   gcloud storage buckets add-iam-policy-binding gs://<project-id>-ada-twin-files --member=serviceAccount:<project-number>-compute@developer.gserviceaccount.com --role=roles/storage.objectAdmin
+   ```
+
 ### Settings
 
 The deploy script reads these environment variables:
@@ -82,10 +119,11 @@ The deploy script reads these environment variables:
 | `API_SERVICE`           | `ada-twin-api`           | Cloud Run service name                       |
 | `ARTIFACT_REPOSITORY`   | `ada-twin-cloud-run`     | Artifact Registry repository                 |
 | `SQL_INSTANCE`          | `ada-twin`               | Cloud SQL instance the service connects to   |
+| `GCS_BUCKET`            | this project's bucket    | Cloud Storage bucket for project files       |
 | `WEB_ORIGIN`            | unchanged                | Origin the API accepts browser requests from |
 | `GOOGLE_CLOUD_LOCATION` | `global`                 | Vertex AI location Gemini is called in       |
 
-The API only answers browsers on `WEB_ORIGIN`, and falls back to the two local apps, `http://localhost:3000` (frontend) and `http://localhost:3067` (web). Once the web app has a URL, deploy once with it set; later deploys keep it:
+The API only answers browsers on `WEB_ORIGIN` (comma-separated), and falls back to the local frontend, `http://localhost:3000`. Once the web app has a URL, deploy once with it set; later deploys keep it:
 
 ```sh
 # PowerShell
@@ -102,3 +140,4 @@ gcloud secrets versions add WORLD_LABS_API_KEY --data-file=-
 
 - The service is public (`--allow-unauthenticated`) because the browser calls it directly. Anyone with the URL can spend your Gemini and World Labs credits, so the script caps it at 3 instances.
 - Requests can run for up to an hour, since `/run` streams until the simulated shift ends.
+- Local development does not touch Cloud SQL or the production files: it uses the Postgres in `compose.yaml` and the same bucket under `GCS_PREFIX=dev/` (see `apps/api/.env.example`).

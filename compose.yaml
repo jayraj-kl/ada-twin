@@ -1,5 +1,18 @@
 # Runs the production images locally: docker compose up --build
+# Just the database, for local development: docker compose up -d db
 services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: factory_twin
+    # On 5434, clear of a Postgres installed on the machine; DB_PORT moves it.
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
   api:
     build:
       context: .
@@ -9,11 +22,18 @@ services:
         required: false
     environment:
       PORT: "8080"
+      # The db service, as the api container reaches it.
+      DATABASE_URL: postgres://postgres:postgres@db:5432/factory_twin
       GOOGLE_APPLICATION_CREDENTIALS: /gcloud/application_default_credentials.json
     # Vertex AI signs in with the credentials from
     # `gcloud auth application-default login`. Set GCLOUD_CONFIG to gcloud's
     # config folder where it is not ~/.config/gcloud (on Windows: $env:APPDATA\gcloud).
     volumes:
       - ${GCLOUD_CONFIG:-~/.config/gcloud}:/gcloud:ro
+    depends_on:
+      - db
     ports:
       - "8080:8080"
+
+volumes:
+  db-data:

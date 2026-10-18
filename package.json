@@ -8,7 +8,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
-    "deploy": "node deploy/deploy.mjs"
+    "deploy": "node deploy/deploy.mjs",
+    "deploy:web": "node deploy/hosting.mjs"
   },
   "devDependencies": {
     "prettier": "3.9.6",
