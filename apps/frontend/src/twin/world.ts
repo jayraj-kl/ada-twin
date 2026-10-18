@@ -6,7 +6,10 @@ import {
   resetProjectWorld,
   startProjectWorld,
 } from "./api";
+import { useStateValue } from "@/lib/project-store";
+import { useProjects } from "@/lib/projects";
 import { WORLD_DIR } from "./project";
+import { SAMPLE_WORLD_KEY, sampleOf } from "./sample";
 
 // World Labs takes about five minutes; asking more often than this only
 // costs requests.
@@ -86,8 +89,12 @@ export function useProjectWorld(projectId: string) {
     },
     () => entries.get(projectId)?.world,
   );
+  // A sample project shows its sample's world; any other, the demo world.
+  const project = useProjects().find(({ id }) => id === projectId);
+  const sampleSlug = useStateValue(projectId, SAMPLE_WORLD_KEY);
+  const fallbackDir = project?.sample ? sampleOf(sampleSlug).dir : WORLD_DIR;
   const own = world?.status === "ready";
-  const worldDir = own ? projectWorldDir(projectId) : WORLD_DIR;
+  const worldDir = own ? projectWorldDir(projectId) : fallbackDir;
   return {
     world,
     own,
@@ -95,6 +102,6 @@ export function useProjectWorld(projectId: string) {
     // Absolute, since the API fetches it to find machines in the photo.
     panoramaUrl: own
       ? `${worldDir}/pano.png`
-      : `${window.location.origin}${WORLD_DIR}/pano.png`,
+      : `${window.location.origin}${fallbackDir}/pano.png`,
   };
 }

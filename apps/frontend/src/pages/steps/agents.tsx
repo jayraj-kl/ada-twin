@@ -109,7 +109,7 @@ export default function AgentsPage() {
                 <input
                   id={`${agent.id}-trait`}
                   className={ui.input}
-                  placeholder="e.g. You have seen the boilers fail before."
+                  placeholder="e.g. You have seen the slowest machine fail on hot days."
                   value={agent.trait ?? ""}
                   onChange={(event) =>
                     edit(agent.id, { trait: event.target.value || undefined })

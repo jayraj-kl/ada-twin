@@ -31,6 +31,8 @@ export const STATE_KEYS = new Set([
   "twin-scouted",
   "twin-days",
   "twin-plant-count",
+  "twin-sample-world",
+  "twin-scenario-suggestions",
 ]);
 
 /** A project as the API answers it. */

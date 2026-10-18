@@ -245,7 +245,7 @@ export const DEFAULT_AGENTS: AgentSpec[] = [
     name: "Sam",
     role: "supervisor",
     persona: "cautious",
-    trait: "You have seen the boilers fail on hot days before.",
+    trait: "You have seen machines here fail more often on hot days.",
   },
 ];
 

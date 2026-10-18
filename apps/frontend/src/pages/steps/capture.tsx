@@ -23,11 +23,17 @@ import {
   deleteProject,
   getProject,
   openSampleProject,
-  timeAgo,
   useProjectId,
   useProjectPath,
   useProjects,
 } from "@/lib/projects";
+import {
+  getField,
+  loadProject,
+  setField,
+  setState,
+  useStateValue,
+} from "@/lib/project-store";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -37,10 +43,19 @@ import {
   renameDocument,
   uploadDocument,
 } from "@/twin/api";
+import { REDESIGN_PANORAMA } from "@/plant/RedesignWorld";
 import { PROCESS_KEY } from "@/twin/flow";
 import { useStored } from "@/twin/project";
-import { startWorld, switchToDemoWorld, useProjectWorld } from "@/twin/world";
-import { SAMPLE, SAMPLE_SEED } from "@/twin/sample";
+import { startWorld, useProjectWorld } from "@/twin/world";
+import {
+  SAMPLES,
+  SAMPLE_CREDIT,
+  SAMPLE_WORLD_KEY,
+  type Sample,
+  sampleMachines,
+  sampleOf,
+  sampleSeed,
+} from "@/twin/sample";
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp"];
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -65,9 +80,6 @@ interface Upload {
 
 // A room name is saved this long after the last keystroke.
 const RENAME_DELAY_MS = 700;
-
-type World =
-  { state: "checking" | "missing" } | { state: "ready"; scale?: number };
 
 async function readUpload(file: File): Promise<Upload> {
   const preview = URL.createObjectURL(file);
@@ -96,27 +108,6 @@ async function readUpload(file: File): Promise<Upload> {
   } catch {
     return { ...base, problem: "Could not read this image" };
   }
-}
-
-function useWorld(worldDir: string) {
-  const [world, setWorld] = useState<World>({ state: "checking" });
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${worldDir}/world.json`)
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then((world) => {
-        if (cancelled) return;
-        setWorld({
-          state: "ready",
-          scale: world?.assets?.splats?.semantics_metadata?.metric_scale_factor,
-        });
-      })
-      .catch(() => !cancelled && setWorld({ state: "missing" }));
-    return () => {
-      cancelled = true;
-    };
-  }, [worldDir]);
-  return world;
 }
 
 /** True while files are dragged anywhere over the window. */
@@ -271,257 +262,71 @@ function PanoTile({
   );
 }
 
-/** The opt-in way in for someone without panoramas of their own. */
-function SampleDoor({ onOpen }: { onOpen: () => void }) {
+/** The sample plants, one card each, for trying the app without photos. */
+function SampleWorlds({ onOpen }: { onOpen: (sample: Sample) => void }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: motionTokens.distance.sm }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -motionTokens.distance.sm }}
-      transition={springs.snappy}
-      className="group/door flex flex-col gap-4 rounded-[var(--radius-card)] border-[1.5px] border-dashed border-ink/40 bg-card p-5 transition-[border-color,box-shadow,translate] duration-200 hover:-translate-x-0.5 hover:-translate-y-0.5 hover:border-solid hover:border-ink hover:shadow-hard"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-ink bg-primary py-0.5 pr-2.5 pl-1 text-[11px] font-semibold tracking-[0.08em] text-[#14140f] uppercase">
-          <span
-            aria-hidden
-            className="size-3.5 rounded-full border border-[#14140f] bg-[repeating-linear-gradient(135deg,#14140f_0_2px,transparent_2px_4px)]"
-          />
-          Sample plant
-        </span>
-        <span className="text-xs text-muted-foreground">No photos yet?</span>
-      </div>
-      <div className="relative aspect-[2/1] overflow-hidden rounded-2xl border border-border bg-muted [container-type:inline-size]">
-        <div
-          className="pano-pan absolute inset-0 group-focus-within/door:[animation-play-state:running] group-hover/door:[animation-play-state:running]"
-          style={{ backgroundImage: `url("${SAMPLE.pano}")` }}
-        />
-        <span className="absolute bottom-1.5 left-1.5 rounded-full bg-[#14140f]/80 px-1.5 font-mono text-[10px] text-white">
-          360° · {SAMPLE.title}
-        </span>
-      </div>
-      <div>
-        <h2 className="font-bold tracking-tight">
-          Try it on a real boiler room
+    <section aria-labelledby="samples-title" className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id="samples-title" className="font-bold tracking-tight">
+          Sample worlds
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Opens a separate sample project with one panorama and a short process
-          description. Nothing you upload is mixed in, and you can delete it any
-          time. {SAMPLE.credit}.
+        <p className="text-sm text-muted-foreground">
+          Building a 3D world from your own panorama can take a while. To try
+          the app out now, open one of these real plants below. Each opens as a
+          separate sample project. {SAMPLE_CREDIT}.
         </p>
       </div>
-      <Button variant="outline" size="sm" className="w-fit" onClick={onOpen}>
-        <SparklesIcon /> Explore the sample plant
-      </Button>
-    </motion.section>
-  );
-}
-
-function WorldCard({
-  world,
-  sample,
-  own,
-  worldDir,
-  panoramas,
-}: {
-  world: World;
-  sample: boolean;
-  own: ReturnType<typeof useProjectWorld>;
-  worldDir: string;
-  /** Kept panoramas a world can be built from. */
-  panoramas: Upload[];
-}) {
-  const path = useProjectPath();
-  const projectId = useProjectId();
-  const [picked, setPicked] = useState<string>("");
-  const [starting, setStarting] = useState(false);
-  const [problem, setProblem] = useState("");
-  const chosen =
-    panoramas.find(({ documentId }) => documentId === picked) ?? panoramas[0];
-  const building = own.world?.status === "generating";
-
-  async function build() {
-    if (!chosen?.documentId) return;
-    setStarting(true);
-    setProblem("");
-    try {
-      await startWorld(projectId, chosen.documentId);
-    } catch (error) {
-      setProblem(error instanceof Error ? error.message : String(error));
-    } finally {
-      setStarting(false);
-    }
-  }
-
-  return (
-    <section className={cn(ui.panel, ui.stack)}>
-      <div className={ui.panelTitle}>
-        {sample
-          ? "The sample 3D world"
-          : own.own
-            ? "Your plant's 3D world"
-            : "The 3D world"}
-        <span className={ui.hint}>what the twin is placed in</span>
-      </div>
-
-      <div
-        className="relative aspect-video overflow-hidden rounded-2xl border border-border bg-[repeating-linear-gradient(45deg,var(--muted)_0_12px,var(--card)_12px_24px)] bg-cover bg-center"
-        style={
-          world.state === "ready"
-            ? {
-                backgroundImage: `linear-gradient(180deg, rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.5)), url("${worldDir}/pano.png")`,
-              }
-            : undefined
-        }
-      >
-        {world.state === "ready" && (
-          <div className={ui.viewerNote}>
-            {own.own
-              ? "Built from your panorama"
-              : "The demo boiler room, until you build your own"}
-          </div>
-        )}
-      </div>
-
-      <table className={ui.table}>
-        <tbody>
-          <tr>
-            <td>3D world, collision mesh and panorama</td>
-            <td className={ui.num}>
-              {world.state === "ready"
-                ? own.own
-                  ? "yours, ready"
-                  : "demo, ready"
-                : world.state === "missing"
-                  ? "not downloaded"
-                  : "checking…"}
-            </td>
-          </tr>
-          {world.state === "ready" && world.scale && (
-            <tr>
-              <td>Real-world scale</td>
-              <td className={ui.num}>1 unit = {world.scale.toFixed(2)} m</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {!sample && building && (
-        <div
-          role="status"
-          className="flex gap-3 rounded-2xl border border-ink bg-primary/15 p-3 text-sm"
-        >
-          <span className="mt-0.5 size-4 shrink-0 animate-spin rounded-full border-2 border-ink border-t-transparent" />
-          <div className="flex flex-col gap-1">
-            <strong>Building your 3D world…</strong>
-            <span className="text-muted-foreground">
-              World Labs usually takes about 5 minutes, sometimes longer. You
-              can keep working: the demo world is used until yours is ready,
-              and it switches over by itself.
-            </span>
-            {own.world?.progress && (
-              <span className="text-xs text-muted-foreground">
-                {own.world.progress}
+      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {SAMPLES.map((one, index) => (
+          <motion.li
+            key={one.slug}
+            initial={{ opacity: 0, y: motionTokens.distance.sm }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...springs.snappy, delay: index * 0.04 }}
+            className="group/sample flex flex-col gap-3 rounded-[var(--radius-card)] border border-border bg-card p-3 transition-[border-color,box-shadow,translate] duration-200 hover:-translate-x-0.5 hover:-translate-y-0.5 hover:border-ink hover:shadow-hard-sm"
+          >
+            <div className="relative aspect-[2/1] overflow-hidden rounded-2xl border border-border bg-muted [container-type:inline-size]">
+              <div
+                className="pano-pan absolute inset-0 group-focus-within/sample:[animation-play-state:running] group-hover/sample:[animation-play-state:running]"
+                style={{ backgroundImage: `url("${one.pano}")` }}
+              />
+              <span className="absolute bottom-1.5 left-1.5 rounded-full bg-[#14140f]/80 px-1.5 font-mono text-[10px] text-white">
+                360° · 3D world
               </span>
-            )}
-            {own.world && (
-              <span className="text-xs text-muted-foreground">
-                Started {timeAgo(own.world.startedAt)}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {!sample && own.world?.status === "failed" && (
-        <p className={cn(ui.poor, "text-sm")}>
-          The 3D world could not be built
-          {own.world.error ? `: ${own.world.error}` : ""}. Try again below.
-        </p>
-      )}
-
-      {!sample && !building && (
-        <div className="flex flex-col gap-2 rounded-2xl border border-border p-3">
-          <strong className="text-sm">
-            {own.own ? "Build it again" : "Build your plant's own 3D world"}
-          </strong>
-          {panoramas.length === 0 ? (
-            <p className={ui.hint}>
-              Upload a 2:1 panorama of your floor above, then build a 3D world
-              from it. Until then the twin uses the demo boiler room.
-            </p>
-          ) : (
-            <>
-              {panoramas.length > 1 && (
-                <select
-                  aria-label="Panorama to build the world from"
-                  className={ui.input}
-                  value={chosen?.documentId ?? ""}
-                  onChange={(event) => setPicked(event.target.value)}
-                >
-                  {panoramas.map((upload) => (
-                    <option key={upload.documentId} value={upload.documentId}>
-                      {upload.room || upload.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <p className={ui.hint}>
-                World Labs turns {chosen?.room ? `"${chosen.room}"` : "the panorama"}{" "}
-                into a 3D world you can walk through. It takes about 5 minutes
-                and uses World Labs credits.
+            </div>
+            <div className="flex flex-1 flex-col gap-1 px-1">
+              <h3 className="font-semibold tracking-tight">{one.title}</h3>
+              <p className="line-clamp-3 text-xs text-muted-foreground">
+                {one.process}
               </p>
-              <Button
-                size="sm"
-                className="w-fit"
-                disabled={starting}
-                onClick={() => void build()}
+              <ul
+                aria-label={`Machines in the ${one.title.toLowerCase()}`}
+                className="mt-1.5 flex flex-wrap gap-1"
               >
-                <SparklesIcon />
-                {starting ? "Starting…" : "Build the 3D world"}
-              </Button>
-            </>
-          )}
-          {problem && <p className={cn(ui.poor, "text-sm")}>{problem}</p>}
-          {own.own && (
-            <button
-              type="button"
-              className="w-fit text-xs text-muted-foreground underline-offset-2 hover:underline"
-              onClick={() => void switchToDemoWorld(projectId)}
+                {one.machines.map(({ name, count, auxiliary }) => (
+                  <li
+                    key={name}
+                    title={auxiliary ? "Support equipment" : undefined}
+                    className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
+                  >
+                    {name}
+                    {count > 1 && <span className="tabular-nums"> ×{count}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              onClick={() => onOpen(one)}
+              aria-label={`Open the ${one.title.toLowerCase()} sample`}
             >
-              Use the demo world instead
-            </button>
-          )}
-        </div>
-      )}
-
-      {world.state === "missing" && (
-        <p className={cn(ui.poor, "text-sm")}>
-          No world has been downloaded yet. Fetch one with{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
-            pnpm --filter @repo/scripts fetch-world &lt;worldId&gt;
-          </code>
-          .
-        </p>
-      )}
-
-      <div className={ui.spread}>
-        <span className={ui.hint}>
-          Next: list the machines, find them in the photo and look up their
-          numbers.
-        </span>
-        {world.state === "ready" ? (
-          <Button asChild variant="outline" size="sm">
-            <Link to={path("twin")}>
-              Continue to the twin <ArrowRightIcon />
-            </Link>
-          </Button>
-        ) : (
-          <button className={ui.button} disabled>
-            Continue to the twin
-          </button>
-        )}
-      </div>
+              <SparklesIcon /> Open sample
+            </Button>
+          </motion.li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -530,18 +335,18 @@ export default function CapturePage() {
   const projectId = useProjectId();
   const project = useProjects().find(({ id }) => id === projectId);
   const sample = project?.sample === true;
+  const shown = sampleOf(useStateValue(projectId, SAMPLE_WORLD_KEY));
   const path = useProjectPath();
   const navigate = useNavigate();
   const location = useLocation();
   const own = useProjectWorld(projectId);
-  const world = useWorld(own.worldDir);
   const picker = useRef<HTMLInputElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const [uploads, setUploads] = useState<Upload[]>([]);
-  const [process, setProcess, processLoaded] = useStored(PROCESS_KEY, "");
+  const [process, setProcess] = useStored(PROCESS_KEY, "");
   const [announcement, setAnnouncement] = useState("");
   const typed = useTypewriter(
-    SAMPLE.process,
+    shown.process,
     sample && (location.state as { typing?: boolean } | null)?.typing === true,
   );
 
@@ -564,7 +369,11 @@ export default function CapturePage() {
       .then((documents) => {
         if (cancelled) return;
         const kept = documents
-          .filter(({ kind }) => kind === "panorama")
+          // The redesign's rebuilt panorama is not one of the user's photos.
+          .filter(
+            ({ kind, label }) =>
+              kind === "panorama" && label !== REDESIGN_PANORAMA,
+          )
           .map(
             (document): Upload => ({
               id: document.id,
@@ -675,9 +484,39 @@ export default function CapturePage() {
     void addFiles(files);
   }
 
-  async function openSample() {
+  const [starting, setStarting] = useState(false);
+  const [buildError, setBuildError] = useState("");
+  const worldProblem =
+    buildError ||
+    (own.world?.status === "failed" ? (own.world.error ?? "unknown error") : "");
+
+  async function buildWorld() {
+    const first = panoramas[0];
+    if (!first?.documentId) return;
+    setStarting(true);
+    setBuildError("");
     try {
-      const opened = await openSampleProject(SAMPLE.name, projectId, SAMPLE_SEED);
+      await startWorld(projectId, first.documentId);
+    } catch (error) {
+      setBuildError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  async function openSample(chosen: Sample) {
+    try {
+      const opened = await openSampleProject(
+        chosen.name,
+        projectId,
+        sampleSeed(chosen),
+      );
+      setState(opened.id, SAMPLE_WORLD_KEY, chosen.slug);
+      await loadProject(opened.id).catch(() => undefined);
+      const saved = getField(opened.id, "machines");
+      if (!Array.isArray(saved) || saved.length === 0) {
+        setField(opened.id, "machines", sampleMachines(chosen));
+      }
       navigate(`/p/${opened.id}/capture`, { state: { typing: true } });
     } catch (error) {
       setAnnouncement(
@@ -701,8 +540,10 @@ export default function CapturePage() {
 
   const modelsConfirmed = useModelsConfirmed();
   const usable = uploads.filter((upload) => !upload.problem).length;
-  const empty = uploads.length === 0 && processLoaded && process.trim() === "";
-  const showDoor = !sample && empty && world.state === "ready";
+  const panoramas = uploads.filter(
+    ({ documentId, problem }) => documentId && !problem,
+  );
+  const building = own.world?.status === "generating";
   const text = sample ? typed.text : process;
 
   return (
@@ -728,7 +569,7 @@ export default function CapturePage() {
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <div className="flex flex-col gap-8">
         <section
           aria-labelledby="composer-title"
           onPaste={onPaste}
@@ -765,9 +606,9 @@ export default function CapturePage() {
             {sample ? (
               <ul className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
                 <PanoTile
-                  src={SAMPLE.pano}
+                  src={shown.pano}
                   meta="2:1"
-                  room={SAMPLE.title}
+                  room={shown.title}
                   sample
                 />
               </ul>
@@ -864,7 +705,7 @@ export default function CapturePage() {
                 id="sample-note"
                 className="px-1 text-xs text-muted-foreground"
               >
-                Sample description · {SAMPLE.credit}
+                Sample description · {SAMPLE_CREDIT}
               </span>
             ) : (
               <div className="flex items-center gap-3">
@@ -895,19 +736,53 @@ export default function CapturePage() {
                 </Link>
               </Button>
             ) : (
-              <button
-                className={ui.primary}
-                disabled
-                title="Building a world from your own photos is not connected yet"
-              >
-                Generate the 3D world <ArrowRightIcon />
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={ui.button}
+                  disabled={panoramas.length === 0 || building || starting}
+                  title={
+                    panoramas.length === 0
+                      ? "Add a 2:1 panorama first"
+                      : "Builds a walkable 3D world from your first panorama"
+                  }
+                  onClick={() => void buildWorld()}
+                >
+                  <SparklesIcon />
+                  {building
+                    ? "Building…"
+                    : starting
+                      ? "Starting…"
+                      : own.own
+                        ? "Rebuild the 3D world"
+                        : "Generate the 3D world"}
+                </button>
+                <Button
+                  asChild
+                  size="sm"
+                  className="hover:-translate-y-px hover:shadow-hard-sm"
+                >
+                  <Link to={path("twin")}>
+                    Continue to the twin <ArrowRightIcon />
+                  </Link>
+                </Button>
+              </div>
             )}
           </div>
 
-          {!sample && usable > 0 && (
-            <p className="px-4 pb-3 text-xs text-muted-foreground">
-              Building a world from your own photos is not connected yet.
+          {!sample && (building || worldProblem || own.own) && (
+            <p
+              role="status"
+              className={cn(
+                "px-4 pb-3 text-xs",
+                worldProblem ? "text-destructive" : "text-muted-foreground",
+              )}
+            >
+              {worldProblem
+                ? `The 3D world could not be built: ${worldProblem}`
+                : building
+                  ? `Building your 3D world${own.world?.progress ? ` · ${own.world.progress}` : ""}. World Labs usually takes about 5 minutes; the demo world is used until yours is ready.`
+                  : "Your own 3D world is ready and used in every step."}
             </p>
           )}
 
@@ -932,20 +807,7 @@ export default function CapturePage() {
           </p>
         </section>
 
-        <div className={ui.stack}>
-          <AnimatePresence initial={false}>
-            {showDoor && <SampleDoor key="door" onOpen={openSample} />}
-          </AnimatePresence>
-          <WorldCard
-            world={world}
-            sample={sample}
-            own={own}
-            worldDir={own.worldDir}
-            panoramas={uploads.filter(
-              ({ documentId, problem }) => documentId && !problem,
-            )}
-          />
-        </div>
+        {!sample && <SampleWorlds onOpen={openSample} />}
       </div>
     </>
   );

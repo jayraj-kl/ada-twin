@@ -258,7 +258,7 @@ export function FlowChat({
           }}
           placeholder={
             disabled ??
-            "Describe your flow, e.g. after the pumps parts wait on a rack for 12, then go to the boiler"
+            "Describe your flow, e.g. after cutting, pieces wait on a rack for 12, then go to welding"
           }
           className="max-h-32 min-h-9 flex-1 resize-none self-center bg-transparent py-1.5 text-sm outline-none [field-sizing:content] placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
         />

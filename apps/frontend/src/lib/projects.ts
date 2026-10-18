@@ -179,15 +179,18 @@ export function projectKey(id: string, key: string) {
 }
 
 /**
- * The one sample project, made on first use from the sample's files and
- * reused after. Like any project, it is saved on the server.
+ * A sample's project, made on first use from the sample's files and reused
+ * after; each sample plant has its own, known by its name. Like any project,
+ * it is saved on the server.
  */
 export async function openSampleProject(
   name: string,
   origin: string | undefined,
   seed: Record<string, unknown>,
 ): Promise<Project> {
-  const existing = read().find((project) => project.sample);
+  const existing = read().find(
+    (project) => project.sample && project.name === name,
+  );
   if (existing) {
     if (existing.origin !== origin) {
       remember({ ...existing, origin });
