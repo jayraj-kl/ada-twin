@@ -62,10 +62,22 @@ interface RunBody {
   days: number;
   /** The project to save the finished run in; nothing is saved without it. */
   projectId?: string;
+  /**
+   * Set when the run tries the picked changes on a copy of the twin: which
+   * picks it was made for. It is kept as the project's run with changes,
+   * never as its latest run.
+   */
+  trialKey?: string;
 }
 
+// A run with changes is kept under one name per project, replaced each time.
+export const trialPath = (projectId: string) =>
+  projectPath(projectId, "runs", "trial.json");
+// The picks a run with changes was made for, as the page writes them.
+const MAX_TRIAL_KEY = 200_000;
+
 function parseBody(body: unknown): RunBody {
-  const { graph, scenario, agents, seed, tickMinutes, days, projectId } =
+  const { graph, scenario, agents, seed, tickMinutes, days, projectId, trialKey } =
     (body ?? {}) as Partial<RunBody>;
   const fail = (message: string) => {
     throw new HTTPException(400, { message });
@@ -101,6 +113,10 @@ function parseBody(body: unknown): RunBody {
     projectId:
       typeof projectId === "string" && UUID.test(projectId)
         ? projectId
+        : undefined,
+    trialKey:
+      typeof trialKey === "string" && trialKey.length <= MAX_TRIAL_KEY
+        ? trialKey
         : undefined,
   };
 }
@@ -246,7 +262,37 @@ run.post("/", async (c) => {
       // Kept with the project, so the results step can load it again on any
       // device. A run that cannot be kept is still shown.
       let runId: string | undefined;
-      if (body.projectId && storageConfigured() && process.env.DATABASE_URL) {
+      // A run with changes, as the page shows it, so a reload keeps the picks
+      // tested.
+      const trial =
+        body.projectId && body.trialKey && storageConfigured()
+          ? {
+              path: trialPath(body.projectId),
+              key: body.trialKey,
+              run: {
+                seed: body.seed,
+                horizon: applied.horizon,
+                maintenanceCrews: applied.maintenanceCrews,
+                tickMinutes: body.tickMinutes,
+                scenario: body.scenario,
+                graph: body.graph,
+                agents: body.agents,
+                adjustments: applied.adjustments,
+                baseline: days[0]!,
+                days,
+                kpis: operated.kpis,
+                events: replayed,
+                decisions: records,
+              } as Record<string, unknown>,
+            }
+          : null;
+      if (trial) {
+        const saving = performance.now();
+        await writeJson(trial.path, { key: trial.key, run: trial.run }).then(
+          () => log.info("trial saved", { events: replayed.length, ms: since(saving) }),
+          (error: unknown) => log.warn("trial not saved", { error, ms: since(saving) }),
+        );
+      } else if (body.projectId && storageConfigured() && process.env.DATABASE_URL) {
         const saving = performance.now();
         try {
           runId = randomUUID();
@@ -308,6 +354,14 @@ run.post("/", async (c) => {
           if (runId) {
             await updateRun(runId, { playbook }).catch((error: unknown) =>
               log.warn("playbook not saved", { run: runId, error }),
+            );
+          }
+          if (trial) {
+            await writeJson(trial.path, {
+              key: trial.key,
+              run: { ...trial.run, playbook },
+            }).catch((error: unknown) =>
+              log.warn("trial playbook not saved", { error }),
             );
           }
           await send({ type: "playbook", playbook });

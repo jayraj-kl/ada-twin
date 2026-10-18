@@ -52,7 +52,9 @@ import {
   type CostEstimate,
   designChanges,
   estimateCosts,
+  forgetTrial,
   latestRun,
+  latestTrial,
   scoutEquipment,
   streamRun,
 } from "@/twin/api";
@@ -106,6 +108,19 @@ interface Scouted {
   run: string;
   changes: MeasuredChange[];
   note: string;
+}
+
+/** JSON with object keys sorted, so a value saved and read back keys the same. */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_, item: unknown) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.entries(item as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        )
+      : item,
+  );
 }
 
 const runId = (run: StoredRun) =>
@@ -312,11 +327,13 @@ export default function ResultsPage() {
   );
   const ready = machines.length > 0 && problems.length === 0;
   // The twin or scenario changed since the run, e.g. by applying a redesign.
+  // Compared with keys sorted: the run comes back from the database with its
+  // keys in another order than the page builds them.
   const stale =
     run !== null &&
     machinesLoaded &&
-    (JSON.stringify(run.graph) !== JSON.stringify(graph) ||
-      JSON.stringify(run.scenario) !== JSON.stringify(scenario));
+    (stableJson(run.graph) !== stableJson(graph) ||
+      stableJson(run.scenario) !== stableJson(scenario));
 
   useEffect(() => {
     if (run) setSeed(run.seed);
@@ -437,13 +454,39 @@ export default function ResultsPage() {
   const trialCancel = useRef<AbortController | null>(null);
   useEffect(() => () => trialCancel.current?.abort(), []);
   const trialKey = run
-    ? JSON.stringify([
+    ? stableJson([
         runId(run),
         kept.map(({ diffs, extraCrews }) => [diffs, extraCrews]),
       ])
     : "";
   const trialCurrent =
     kept.length > 0 && trial !== null && trial.key === trialKey;
+
+  // The run with changes kept with the project, so a reload keeps the picks
+  // tested. One made on this page meanwhile is newer.
+  useEffect(() => {
+    setTrial(null);
+    let cancelled = false;
+    latestTrial<StoredRun>(projectId)
+      .then(async (found) => {
+        if (!found || cancelled) return;
+        setTrial((current) => current ?? { ...found, crewDays: null });
+        if (!found.run.playbook) return;
+        const crewDays = await replayCrew({
+          ...found.run,
+          playbook: found.run.playbook,
+        });
+        if (!cancelled) {
+          setTrial((current) =>
+            current?.key === found.key ? { ...current, crewDays } : current,
+          );
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   // --- the charts ------------------------------------------------------------
   // The redesign in view, once run with the picks, charts that run instead.
@@ -721,6 +764,9 @@ export default function ResultsPage() {
       seed: run.seed,
       tickMinutes: run.tickMinutes,
       days: daysOf(run).length,
+      // Kept as the project's run with changes, not as its latest run.
+      projectId,
+      trialKey: key,
     };
     setTrialProblem("");
     setTrialProgress(0);
@@ -817,7 +863,6 @@ export default function ResultsPage() {
     setHistory(
       [...versions, { at: Date.now(), label, changes: next }].slice(-30),
     );
-    if (next.length > 0) setView("redesign");
   }
 
   function keep(messageId: string, changes: Change[]) {
@@ -1051,6 +1096,8 @@ export default function ResultsPage() {
     setScenario(next.scenario);
     setKept([]);
     setHistory([]);
+    setTrial(null);
+    void forgetTrial(projectId).catch(() => undefined);
     setView("baseline");
     navigate(path("plant"));
   }
@@ -1175,6 +1222,26 @@ export default function ResultsPage() {
       ? kept.reduce((sum, { id }) => sum + (alone[id] as number), 0)
       : null,
   };
+  // What the run with changes shipped less than the plant as it is, if it
+  // did: on standard rules over the days, or with the agents on the shift.
+  const worse = (() => {
+    if (!run || !trialCurrent) return "";
+    const mean = (days: Kpis[]) =>
+      days.reduce((sum, { completed }) => sum + completed, 0) / days.length;
+    const lost = (by: number, how: string) =>
+      by >= 0.5
+        ? `${Math.round(by * 10) / 10} fewer ${unit} a shift ${how}`
+        : "";
+    const losses = [
+      lost(mean(daysOf(run)) - mean(daysOf(trial!.run)), "on standard rules"),
+      ...(run.agents.length > 0
+        ? [lost(run.kpis.completed - trial!.run.kpis.completed, "with your agents")]
+        : []),
+    ].filter(Boolean);
+    return losses.length > 0
+      ? `In the run these changes shipped ${losses.join(" and ")}`
+      : "";
+  })();
   const trialState: TrialState = {
     after: trialCurrent
       ? {
@@ -1216,24 +1283,39 @@ export default function ResultsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [showDecisions, sheet]);
 
-  // The one run button follows the view: on the redesign, with changes
-  // picked, it runs them on a copy of the twin; otherwise the twin itself.
-  const runsPicks = Boolean(run) && view === "redesign" && kept.length > 0;
+  // Picks count as tested once a run with exactly them has finished on the
+  // twin as it is; only then can they be applied.
+  const tested = trialCurrent && !stale;
+  // The one run button is offered only when running would show something
+  // new. Untested picks come first, whatever the view, so picking a change
+  // lights it up. Picks are tried on the run's twin, so once the twin has
+  // changed the shift itself is run again first.
+  const runsPicks = Boolean(run) && !stale && kept.length > 0 && !tested;
+  // The shift as it would run now differs from the run shown: the twin, the
+  // seed, the days averaged or the crew changed.
+  const runChanges = run
+    ? [
+        stale && "twin",
+        seed !== run.seed && "seed",
+        days !== daysOf(run).length && "days",
+        (crew.tickMinutes !== run.tickMinutes ||
+          stableJson(crew.agents) !== stableJson(run.agents)) &&
+          "crew",
+      ].filter((reason): reason is string => Boolean(reason))
+    : [];
+  const offerRun = Boolean(live) || !run || runsPicks || runChanges.length > 0;
   const runLabel = live
     ? trialState.running && run?.agents.length
       ? `Running… ${trialState.decisions} ${trialState.decisions === 1 ? "decision" : "decisions"}`
       : "Running…"
     : runsPicks
-      ? trialState.after
-        ? "Run changes again"
-        : trialState.outdated
-          ? "Run with the new picks"
-          : "Run with changes"
+      ? trialState.outdated
+        ? "Run with the new picks"
+        : "Run with changes"
       : run
-        ? "Run again"
+        ? `Run again · ${runChanges[0]} changed`
         : "Run the shift";
-  const runDisabled =
-    !ready || Boolean(live) || (runsPicks && Boolean(trialState.blocked));
+  const runDisabled = !ready || Boolean(live);
   const chatDisabled = !run
     ? "Run the shift first, then redesign it here"
     : live
@@ -1426,44 +1508,57 @@ export default function ResultsPage() {
               </Link>
             )}
             {kept.length > 0 && !live && (
-              <button
-                className={cn(ui.button, "h-9 bg-card")}
-                onClick={applyRedesign}
-                title="Make the redesign your twin, then see the changes ranked and drawn into your photos"
-              >
-                <CheckCheckIcon /> Apply to my twin
-              </button>
-            )}
-            <span
-              title={
-                !ready
-                  ? "Finish the twin's material flow first"
-                  : runsPicks
-                    ? trialState.blocked ||
-                      "Run the shift with the picked changes, on a copy of your twin"
-                    : undefined
-              }
-            >
-              <button
-                className={cn(
-                  ui.button,
-                  "h-9",
-                  (run && !stale && !runsPicks) ||
-                    (runsPicks && trialState.after)
-                    ? "bg-card"
-                    : ui.primary,
+              <>
+                {tested && worse && (
+                  <span className="max-w-64 rounded-full border border-[#ff8c42]/40 bg-[#14140f]/85 px-3 py-1 text-xs text-[#ff8c42] backdrop-blur-md">
+                    {worse}
+                  </span>
                 )}
-                disabled={runDisabled}
-                onClick={runsPicks ? () => void runTrial() : start}
+                <span
+                  title={
+                    tested
+                      ? "Make the redesign your twin, then see the changes ranked and drawn into your photos"
+                      : stale
+                        ? "Your twin has changed since this run: run the shift again, then run with changes."
+                        : "Run with changes first, so you see how your plant and agents do with them."
+                  }
+                >
+                  <button
+                    className={cn(ui.button, "h-9 bg-card")}
+                    disabled={!tested}
+                    onClick={applyRedesign}
+                  >
+                    <CheckCheckIcon /> Apply to my twin
+                  </button>
+                </span>
+              </>
+            )}
+            {offerRun && (
+              <span
+                title={
+                  !ready
+                    ? "Finish the twin's material flow first"
+                    : runsPicks
+                      ? "Run the shift with the picked changes, on a copy of your twin"
+                      : runChanges.length > 0
+                        ? `Changed since this run: ${runChanges.join(", ")}.${
+                            stale && kept.length > 0
+                              ? " Run it again, then run with your changes."
+                              : ""
+                          }`
+                        : undefined
+                }
               >
-                {run && !(runsPicks && !trialState.after) ? (
-                  <RotateCcwIcon />
-                ) : (
-                  <PlayIcon />
-                )}{" "}
-                {runLabel}
-              </button>
-            </span>
+                <button
+                  className={cn(ui.button, "h-9", ui.primary)}
+                  disabled={runDisabled}
+                  onClick={runsPicks ? () => void runTrial() : start}
+                >
+                  {run && !runsPicks ? <RotateCcwIcon /> : <PlayIcon />}{" "}
+                  {runLabel}
+                </button>
+              </span>
+            )}
           </div>
         </div>
 

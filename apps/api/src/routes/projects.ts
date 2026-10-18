@@ -20,6 +20,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { log } from "../logging";
+import { trialPath } from "./run";
 import {
   deleteFile,
   deleteProjectFiles,
@@ -376,6 +377,26 @@ projects.delete("/:id/documents/:documentId", async (c) => {
   const row = await deleteDocument(id, documentId);
   if (!row) fail(404, "No such document");
   await deleteFile(row!.path);
+  return c.body(null, 204);
+});
+
+/**
+ * The project's run with its picked changes, as the results step shows it:
+ * { trial: { key, run } }, or null when none is kept.
+ */
+projects.get("/:id/runs/trial", async (c) => {
+  const id = projectId(c.req.param("id"));
+  if (!storageConfigured()) return c.json({ trial: null });
+  const trial = await readJson<{ key: string; run: Record<string, unknown> }>(
+    trialPath(id),
+  );
+  return c.json({ trial });
+});
+
+/** Forgets the run with changes, once they are applied. */
+projects.delete("/:id/runs/trial", async (c) => {
+  const id = projectId(c.req.param("id"));
+  if (storageConfigured()) await deleteFile(trialPath(id));
   return c.body(null, 204);
 });
 

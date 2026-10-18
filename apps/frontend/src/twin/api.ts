@@ -492,6 +492,23 @@ export async function latestRun<Run>(projectId: string): Promise<Run | null> {
   return (await unwrap<{ run: Run | null }>(response)).run;
 }
 
+/**
+ * The project's run with its picked changes, and which picks it was made
+ * for; null if none is kept.
+ */
+export async function latestTrial<Run>(
+  projectId: string,
+): Promise<{ key: string; run: Run } | null> {
+  const response = await apiFetch(`/projects/${projectId}/runs/trial`);
+  return (await unwrap<{ trial: { key: string; run: Run } | null }>(response))
+    .trial;
+}
+
+/** Forgets the run with changes, once they are applied. */
+export async function forgetTrial(projectId: string) {
+  await apiFetch(`/projects/${projectId}/runs/trial`, { method: "DELETE" });
+}
+
 /** A project's own 3D world, while World Labs builds it and once it is ready. */
 export interface ProjectWorld {
   id: string;

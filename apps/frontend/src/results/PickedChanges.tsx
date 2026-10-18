@@ -28,7 +28,7 @@ export interface Trial {
 
 /**
  * What the picked changes do together against one by one, and how their run
- * stands. They run from the run button over the world, on the redesign.
+ * stands. They run from the run button over the world.
  * Shown in the side pane, and over the world when the redesign is in view.
  */
 export function PickedChanges({
@@ -83,9 +83,10 @@ export function PickedChanges({
       )}
       {!over && (
         <p className={cn("text-xs", quiet)}>
-          Measured on standard rules. Switch the view to Redesign and run the
-          shift to see standard rules and your agents with them, on a copy of
-          your twin; your twin changes only when you apply them.
+          Measured on standard rules. Press Run with changes at the top to
+          see standard rules and your agents with them, on a copy of your
+          twin. They can be applied once that run is done; your twin changes
+          only when you apply them.
         </p>
       )}
       {trial.problem && (
