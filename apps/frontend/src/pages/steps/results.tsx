@@ -1326,6 +1326,7 @@ export default function ResultsPage() {
     <div
       role="tablist"
       aria-label="Results"
+      data-tour="results-tabs"
       className="flex gap-1 rounded-full bg-muted p-1"
     >
       {(
@@ -1464,6 +1465,7 @@ export default function ResultsPage() {
           <div
             role="tablist"
             aria-label="Plant"
+            data-tour="plant-view"
             className="pointer-events-auto flex rounded-full border border-ink bg-card p-1 shadow-hard-sm"
           >
             {(
@@ -1497,7 +1499,10 @@ export default function ResultsPage() {
               </button>
             ))}
           </div>
-          <div className="pointer-events-auto flex items-center gap-2">
+          <div
+            data-tour="run"
+            className="pointer-events-auto flex items-center gap-2"
+          >
             {applied.length > 0 && kept.length === 0 && !live && (
               <Link
                 to={path("plant")}
@@ -1672,7 +1677,10 @@ export default function ResultsPage() {
               )}
             </AnimatePresence>
 
-            <div className="pointer-events-auto w-full max-w-[460px] rounded-2xl border border-white/15 bg-[#14140f]/85 p-3 text-white backdrop-blur-md">
+            <div
+              data-tour="playback"
+              className="pointer-events-auto w-full max-w-[460px] rounded-2xl border border-white/15 bg-[#14140f]/85 p-3 text-white backdrop-blur-md"
+            >
               {live ? (
                 <>
                   <div className="flex items-center justify-between gap-2">
@@ -1844,7 +1852,9 @@ export default function ResultsPage() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
             {paneBody}
           </div>
-          <div className="border-t border-border p-3">{chatBox}</div>
+          <div data-tour="design-chat" className="border-t border-border p-3">
+            {chatBox}
+          </div>
         </aside>
       ) : (
         <motion.aside
@@ -1871,7 +1881,9 @@ export default function ResultsPage() {
               {paneBody}
             </div>
           )}
-          <div className="border-t border-border p-3">{chatBox}</div>
+          <div data-tour="design-chat" className="border-t border-border p-3">
+            {chatBox}
+          </div>
         </motion.aside>
       )}
     </div>

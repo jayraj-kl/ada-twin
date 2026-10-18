@@ -264,7 +264,11 @@ export default function ScenarioPage() {
         runs.
       </p>
 
-      <div className={ui.panel} style={{ marginBottom: 20 }}>
+      <div
+        data-tour="scenario-chat"
+        className={ui.panel}
+        style={{ marginBottom: 20 }}
+      >
         <ScenarioChat
           messages={chat}
           unit={unit}
@@ -279,7 +283,7 @@ export default function ScenarioPage() {
 
       <div className={ui.grid2}>
         <div className={ui.stack}>
-          <div className={ui.panel}>
+          <div data-tour="conditions" className={ui.panel}>
             <div className={ui.panelTitle}>
               Conditions
               {saved ? (
@@ -371,7 +375,7 @@ export default function ScenarioPage() {
             </div>
           </div>
 
-          <div className={ui.panel}>
+          <div data-tour="requirements" className={ui.panel}>
             <div className={ui.panelTitle}>
               Requirements
               <span className={ui.hint}>
@@ -404,7 +408,7 @@ export default function ScenarioPage() {
             </div>
           </div>
 
-          <div className={ui.panel}>
+          <div data-tour="briefing" className={ui.panel}>
             <div className={ui.panelTitle}>
               Crew briefing
               <span className={ui.hint}>
@@ -430,7 +434,7 @@ export default function ScenarioPage() {
           </div>
         </div>
 
-        <div className={ui.panel}>
+        <div data-tour="effects" className={ui.panel}>
           <div className={ui.panelTitle}>
             What this changes
             <span className={ui.hint}>your baseline twin is untouched</span>
@@ -468,7 +472,7 @@ export default function ScenarioPage() {
         </div>
       </div>
 
-      <div className={ui.actions}>
+      <div data-tour="scenario-next" className={ui.actions}>
         <Link
           to={path("agents")}
           className={cn(ui.button, ui.primary)}

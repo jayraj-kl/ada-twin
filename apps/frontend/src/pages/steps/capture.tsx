@@ -265,8 +265,11 @@ function PanoTile({
 /** The sample plants, one card each, for trying the app without photos. */
 function SampleWorlds({ onOpen }: { onOpen: (sample: Sample) => void }) {
   return (
-    <section aria-labelledby="samples-title" className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
+    <section
+      aria-labelledby="samples-title"
+      className="flex flex-col gap-3"
+    >
+      <div data-tour="samples" className="flex flex-col gap-1">
         <h2 id="samples-title" className="font-bold tracking-tight">
           Sample worlds
         </h2>
@@ -560,6 +563,7 @@ export default function CapturePage() {
         {!modelsConfirmed && (
           <motion.div
             key="model-prompt"
+            data-tour="models"
             exit={{ opacity: 0, height: 0, y: -16 }}
             transition={springs.snappy}
             className="overflow-hidden"
@@ -584,7 +588,9 @@ export default function CapturePage() {
           </h2>
 
           {sample && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-t-[calc(var(--radius-card)-1px)] bg-[#14140f] px-4 py-2.5 text-xs text-[#f5f5eb]">
+            <div
+              data-tour="sample-banner"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-t-[calc(var(--radius-card)-1px)] bg-[#14140f] px-4 py-2.5 text-xs text-[#f5f5eb]">
               <span className="flex items-center gap-2">
                 <span className="size-2 rounded-full bg-primary" />
                 <span>
@@ -602,7 +608,7 @@ export default function CapturePage() {
             </div>
           )}
 
-          <div className="p-3 pb-0">
+          <div data-tour="panoramas" className="p-3 pb-0">
             {sample ? (
               <ul className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
                 <PanoTile
@@ -675,7 +681,7 @@ export default function CapturePage() {
 
           <div className="mx-4 mt-3 border-t border-border" />
 
-          <div className="px-4 pt-3">
+          <div data-tour="process" className="px-4 pt-3">
             <label
               htmlFor="process"
               className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs font-medium text-muted-foreground"
@@ -729,6 +735,7 @@ export default function CapturePage() {
               <Button
                 asChild
                 size="sm"
+                data-tour="capture-actions"
                 className="hover:-translate-y-px hover:shadow-hard-sm"
               >
                 <Link to={path("twin")}>
@@ -736,7 +743,10 @@ export default function CapturePage() {
                 </Link>
               </Button>
             ) : (
-              <div className="flex flex-wrap items-center gap-2">
+              <div
+                data-tour="capture-actions"
+                className="flex flex-wrap items-center gap-2"
+              >
                 <button
                   type="button"
                   className={ui.button}

@@ -1251,6 +1251,7 @@ export default function TwinPage() {
         </div>
         <button
           className={ui.primary}
+          data-tour="flow-draft"
           disabled={drafting || entries.length === 0}
           onClick={draftTheFlow}
         >
@@ -1354,6 +1355,7 @@ export default function TwinPage() {
               onClick={() => setHelp((open) => !open)}
               aria-expanded={help}
               aria-label="How to use this view"
+              data-tour="twin-help"
               className={glassButton}
             >
               <CircleHelpIcon className="size-4" />
@@ -1403,6 +1405,7 @@ export default function TwinPage() {
         <div
           role="tablist"
           aria-label="View"
+          data-tour="twin-view"
           className="pointer-events-auto order-1 flex rounded-full border border-ink bg-card p-1 shadow-hard-sm sm:order-none"
         >
           {(
@@ -1454,6 +1457,7 @@ export default function TwinPage() {
         {view === "world" ? (
           <div
             role="status"
+            data-tour="locate"
             className="pointer-events-auto flex flex-wrap items-center justify-center gap-x-3 gap-y-2 rounded-full border border-white/15 bg-[#14140f]/80 py-1.5 pr-1.5 pl-4 text-sm text-white backdrop-blur-md max-sm:rounded-3xl"
           >
             {moving && movingEntry ? (
@@ -1523,6 +1527,7 @@ export default function TwinPage() {
               variant="outline"
               size="sm"
               className="bg-card"
+              data-tour="machines"
               onClick={() => setDrawer(true)}
             >
               <ChevronUpIcon /> Machines · {entries.length}
@@ -1532,6 +1537,7 @@ export default function TwinPage() {
             <Button
               asChild
               size="sm"
+              data-tour="confirm"
               className="hover:-translate-y-px hover:shadow-hard-sm"
             >
               <Link to={path("scenario")}>
@@ -1541,6 +1547,7 @@ export default function TwinPage() {
           ) : (
             <span
               title={confirmReason}
+              data-tour="confirm"
               tabIndex={0}
               className="rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
             >
@@ -1562,6 +1569,7 @@ export default function TwinPage() {
           onClick={() => setDrawer((open) => !open)}
           aria-expanded={drawer}
           aria-controls="machines-panel"
+          data-tour="machines"
           aria-label={
             drawer ? "Close the machines panel" : "Open the machines panel"
           }

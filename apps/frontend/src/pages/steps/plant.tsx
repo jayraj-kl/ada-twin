@@ -423,7 +423,10 @@ export default function PlantPage() {
             </span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
+        <div
+          data-tour="plant-actions"
+          className="flex flex-wrap items-center gap-2 print:hidden"
+        >
           {applied.length > 1 && (
             <>
               <label htmlFor="applied" className="sr-only">
@@ -458,7 +461,10 @@ export default function PlantPage() {
 
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* The report. */}
-        <section aria-label="Applied changes" className="flex flex-col gap-4">
+        <section
+          aria-label="Applied changes"
+          className="flex flex-col gap-4"
+        >
           {!report ? (
             <div className={ui.panel}>
               <p className="text-sm font-semibold">
@@ -486,7 +492,7 @@ export default function PlantPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div data-tour="report" className="grid grid-cols-2 gap-3">
                 <div className={ui.kpi}>
                   <div className={ui.kpiLabel}>Before, {unit} per shift</div>
                   <div className={ui.kpiValue}>{Math.round(report.before)}</div>
@@ -729,6 +735,7 @@ export default function PlantPage() {
         {/* The photos, and the conversation about them. */}
         <aside
           aria-label="Your plant in photos"
+          data-tour="photos"
           className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-4 lg:sticky lg:top-20 lg:h-[calc(100svh-6.5rem)] lg:overflow-y-auto print:hidden"
         >
           <div className="flex items-baseline justify-between gap-2">

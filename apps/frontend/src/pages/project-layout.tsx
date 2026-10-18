@@ -43,6 +43,7 @@ import {
 } from "@/lib/projects";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
+import { ProductTour, TourButton } from "@/tour/ProductTour";
 
 // Steps whose page is the world itself, filling everything under the top bar.
 const IMMERSIVE: readonly StepSlug[] = ["twin", "results"];
@@ -74,6 +75,7 @@ function SaveIndicator({ projectId }: { projectId: string }) {
   return (
     <span
       role="status"
+      data-tour="save"
       className={cn(
         "flex shrink-0 items-center gap-1 text-xs",
         status === "failed" ? "text-destructive" : "text-muted-foreground",
@@ -105,6 +107,7 @@ function StepCrumb({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
+        data-tour="steps"
         aria-current="page"
         aria-label={`Step ${current + 1} of ${STEPS.length}: ${STEPS[current]!.label}. Go to another step`}
         className="-mx-1 flex shrink-0 items-center gap-1 rounded-md px-1 font-semibold outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:bg-accent"
@@ -238,7 +241,12 @@ export default function ProjectLayout() {
           end={
             <>
               <SaveIndicator projectId={project.id} />
-              {showPicker && <ModelPicker />}
+              {showPicker && (
+                <div data-tour="models" className="flex">
+                  <ModelPicker />
+                </div>
+              )}
+              <TourButton step={step} />
               <ProfileMenu />
             </>
           }
@@ -304,6 +312,7 @@ export default function ProjectLayout() {
           </AnimatePresence>
         </main>
       </div>
+      <ProductTour step={step} />
     </ProjectContext.Provider>
   );
 }

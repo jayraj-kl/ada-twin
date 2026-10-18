@@ -47,8 +47,12 @@ export default function AgentsPage() {
       </p>
 
       <div className={ui.grid3}>
-        {agents.map((agent) => (
-          <div key={agent.id} className={ui.panel}>
+        {agents.map((agent, index) => (
+          <div
+            key={agent.id}
+            data-tour={index === 0 ? "agents" : undefined}
+            className={ui.panel}
+          >
             <div className={ui.row} style={{ marginBottom: 12 }}>
               <Avatar
                 seed={agent.name.trim().toLowerCase() || agent.id}
@@ -137,6 +141,7 @@ export default function AgentsPage() {
 
         {agents.length < MAX_AGENTS && (
           <button
+            data-tour="agent-add"
             className={cn(ui.drop, "group content-center rounded-[28px] border-2")}
             onClick={() =>
               setCrew({
@@ -162,7 +167,7 @@ export default function AgentsPage() {
         )}
       </div>
 
-      <div className={ui.panel} style={{ marginTop: 20 }}>
+      <div data-tour="tick" className={ui.panel} style={{ marginTop: 20 }}>
         <div className={ui.row}>
           <div className={ui.field}>
             <label htmlFor="tick">
@@ -193,7 +198,7 @@ export default function AgentsPage() {
         </div>
       </div>
 
-      <div className={ui.actions}>
+      <div data-tour="agents-next" className={ui.actions}>
         <Link to={path("results")} className={cn(ui.button, ui.primary)}>
           Run the shift
         </Link>
