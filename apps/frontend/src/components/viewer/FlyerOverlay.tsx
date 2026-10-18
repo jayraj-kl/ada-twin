@@ -2,50 +2,38 @@ import type { Viewer } from "@mkkellogg/gaussian-splats-3d";
 import { type RefObject, useEffect, useRef } from "react";
 import * as THREE from "three";
 
-/** A paper plane that flies a loop of waypoints, trailing a dotted line. */
+/**
+ * A marker that walks a loop of waypoints: a ring on the floor, a stem up
+ * from it and a badge with a glyph on top, trailing a dotted line.
+ */
 export interface Flyer {
   id: string;
   /** `#rrggbb`. */
   colour: string;
-  /** World positions flown in order, forever. One waypoint is a hover. */
+  /** SVG path data on a 24-unit square, stroked white on the badge. */
+  glyph: string;
+  /** At work where it stands: the ring turns and pulses instead of pointing. */
+  working?: boolean;
+  /** Floor positions walked in order, forever. One waypoint is a stand. */
   waypoints: [number, number, number][];
 }
 
 // World units per second, and how close counts as having reached a waypoint.
 const SPEED = 0.55;
 const ARRIVE = 0.04;
-// About two seconds of flight: the length of the dotted trail.
+// About two seconds of walking: the length of the dotted trail.
 const TRAIL_SAMPLES = 110;
 
-// A paper plane about half a unit across, nose along +X. The world is Y-down
-// (see useSplatViewer), so "up" on the model is -Y.
-const PLANE_SCALE = 0.5;
-const PLANE_VERTS = (
-  [
-    [-0.5, 0.054, 0],
-    [-0.5, -0.054, 0.018],
-    [0.5, -0.054, 0],
-    [-0.5, -0.054, 0.288],
-    [-0.5, -0.04, 0.036],
-    [-0.5, -0.054, -0.018],
-    [-0.5, -0.054, -0.288],
-    [-0.5, -0.04, -0.036],
-  ] as const
-).map(
-  ([x, y, z]) =>
-    new THREE.Vector3(x * PLANE_SCALE, -y * PLANE_SCALE, z * PLANE_SCALE),
-);
-const PLANE_FACES = [
-  { corners: [0, 1, 2], normal: [-0.018, 0.165, -0.986] },
-  { corners: [1, 3, 2], normal: [0, 1, 0] },
-  { corners: [3, 4, 2], normal: [0.015, -0.998, 0.053] },
-  { corners: [5, 0, 2], normal: [-0.018, 0.165, 0.986] },
-  { corners: [6, 5, 2], normal: [0, 1, 0] },
-  { corners: [2, 7, 6], normal: [0.015, -0.998, -0.053] },
-] as const;
-// A key light from above and to the side.
-const LIGHT = new THREE.Vector3(0.416, -0.832, 0.249);
+// The ring around the foot and the stem up to the badge, in world units. The
+// world is Y-down (see useSplatViewer), so up is -Y.
+const RING_RADIUS = 0.12;
+const RING_SAMPLES = 24;
+const STEM = 0.35;
+// The badge's diameter in pixels, whatever the distance, so it stays legible.
+const BADGE_MIN = 18;
+const BADGE_MAX = 34;
 const NOSE = new THREE.Vector3(1, 0, 0);
+const UP = new THREE.Vector3(0, -1, 0);
 
 interface Screen {
   x: number;
@@ -75,60 +63,178 @@ function toScreen(
   };
 }
 
-function drawPlane(
+const glyphs = new Map<string, Path2D>();
+function glyphPath(d: string) {
+  let path = glyphs.get(d);
+  if (!path) {
+    path = new Path2D(d);
+    glyphs.set(d, path);
+  }
+  return path;
+}
+
+/** The ring on the floor, foreshortened as the camera sees it. */
+function drawRing(
   ctx: CanvasRenderingContext2D,
   flight: Flight,
-  colour: string,
+  flyer: Flyer,
+  moving: boolean,
+  now: number,
   camera: THREE.Camera,
   width: number,
   height: number,
 ) {
-  const turn = new THREE.Quaternion().setFromUnitVectors(NOSE, flight.heading);
-  const corners = PLANE_VERTS.map((vertex) =>
-    vertex.clone().applyQuaternion(turn).add(flight.position),
-  );
-  const screen = corners.map((corner) =>
-    toScreen(corner, camera, width, height),
-  );
-  if (!screen.some(({ visible }) => visible)) return;
-
-  // Painter's algorithm: furthest face first.
-  const faces = PLANE_FACES.map((face) => ({
-    face,
-    depth:
-      face.corners.reduce<number>(
-        (sum, index) =>
-          sum +
-          corners[index]!.clone().applyMatrix4(camera.matrixWorldInverse).z,
-        0,
-      ) / 3,
-  })).sort((a, b) => a.depth - b.depth);
-
-  const [red, green, blue] = [1, 3, 5].map((start) =>
-    parseInt(colour.slice(start, start + 2), 16),
-  );
-  ctx.globalAlpha = 0.95;
-  for (const { face } of faces) {
-    const [a, b, c] = face.corners.map((index) => screen[index]!);
-    if (!a!.visible && !b!.visible && !c!.visible) continue;
-    const lit =
-      Math.max(
-        0,
-        new THREE.Vector3(...face.normal).applyQuaternion(turn).dot(LIGHT),
-      ) *
-        0.65 +
-      0.35;
+  const ring = (radius: number) =>
+    Array.from({ length: RING_SAMPLES }, (_, step) => {
+      const angle = (step / RING_SAMPLES) * Math.PI * 2;
+      return toScreen(
+        flight.position
+          .clone()
+          .add(
+            new THREE.Vector3(
+              Math.cos(angle) * radius,
+              0,
+              Math.sin(angle) * radius,
+            ),
+          ),
+        camera,
+        width,
+        height,
+      );
+    });
+  const trace = (points: Screen[]) => {
     ctx.beginPath();
-    ctx.moveTo(a!.x, a!.y);
-    ctx.lineTo(b!.x, b!.y);
-    ctx.lineTo(c!.x, c!.y);
+    points.forEach(({ x, y }, index) =>
+      index === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y),
+    );
     ctx.closePath();
-    ctx.fillStyle = `rgb(${Math.round(red! * lit)},${Math.round(green! * lit)},${Math.round(blue! * lit)})`;
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth = 0.5;
+  };
+  const points = ring(RING_RADIUS);
+  if (!points.every(({ visible }) => visible)) return;
+
+  trace(points);
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = flyer.colour;
+  ctx.fill();
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = "#000000";
+  ctx.stroke();
+  ctx.globalAlpha = 0.95;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = flyer.colour;
+  if (flyer.working) {
+    // A turning dashed ring, and a second one pulsing outwards.
+    ctx.setLineDash([5, 4]);
+    ctx.lineDashOffset = moving ? -now / 60 : 0;
     ctx.stroke();
+    ctx.setLineDash([]);
+    if (moving) {
+      const phase = (now / 1400) % 1;
+      trace(ring(RING_RADIUS * (1 + phase * 1.2)));
+      ctx.globalAlpha = (1 - phase) * 0.8;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  } else {
+    ctx.stroke();
+    // A chevron on the rim, pointing the way it walks.
+    const at = (along: number, across: number) =>
+      toScreen(
+        flight.position
+          .clone()
+          .addScaledVector(flight.heading, along)
+          .addScaledVector(
+            new THREE.Vector3(-flight.heading.z, 0, flight.heading.x),
+            across,
+          ),
+        camera,
+        width,
+        height,
+      );
+    const tip = at(RING_RADIUS * 1.6, 0);
+    const left = at(RING_RADIUS * 1.05, RING_RADIUS * 0.45);
+    const right = at(RING_RADIUS * 1.05, -RING_RADIUS * 0.45);
+    ctx.beginPath();
+    ctx.moveTo(left.x, left.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.lineTo(right.x, right.y);
+    ctx.closePath();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = flyer.colour;
+    ctx.fill();
   }
+  ctx.globalAlpha = 1;
+}
+
+/** The stem up from the foot and the badge on top of it. */
+function drawBadge(
+  ctx: CanvasRenderingContext2D,
+  flight: Flight,
+  flyer: Flyer,
+  moving: boolean,
+  camera: THREE.Camera,
+  width: number,
+  height: number,
+) {
+  const foot = toScreen(flight.position, camera, width, height);
+  const topPoint = flight.position.clone().addScaledVector(UP, STEM);
+  const top = toScreen(topPoint, camera, width, height);
+  if (!top.visible) return;
+  // Sized from how large a tenth of a unit looks there, then clamped.
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+  const aside = toScreen(
+    topPoint.clone().addScaledVector(right, 0.1),
+    camera,
+    width,
+    height,
+  );
+  const size = Math.min(
+    BADGE_MAX,
+    Math.max(BADGE_MIN, Math.hypot(aside.x - top.x, aside.y - top.y) * 2.4),
+  );
+  const radius = size / 2;
+  ctx.globalAlpha = moving ? 1 : 0.7;
+
+  if (foot.visible) {
+    ctx.lineCap = "round";
+    for (const pass of [
+      { width: 3, colour: "rgba(0,0,0,0.5)" },
+      { width: 1.5, colour: flyer.colour },
+    ]) {
+      ctx.lineWidth = pass.width;
+      ctx.strokeStyle = pass.colour;
+      ctx.beginPath();
+      ctx.moveTo(foot.x, foot.y);
+      ctx.lineTo(top.x, top.y);
+      ctx.stroke();
+    }
+  }
+
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 1;
+  ctx.beginPath();
+  ctx.arc(top.x, top.y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = flyer.colour;
+  ctx.fill();
+  ctx.restore();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+
+  // The glyph fills about 60% of the badge.
+  const scale = (size * 0.6) / 24;
+  ctx.save();
+  ctx.translate(top.x - 12 * scale, top.y - 12 * scale);
+  ctx.scale(scale, scale);
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke(glyphPath(flyer.glyph));
+  ctx.restore();
   ctx.globalAlpha = 1;
 }
 
@@ -164,7 +270,7 @@ function drawTrail(
 
 /**
  * Draws each flyer over the splat view. Flyers keep their place when their
- * waypoints change, so a new destination is flown to rather than jumped to.
+ * waypoints change, so a new destination is walked to rather than jumped to.
  */
 export function FlyerOverlay({
   viewerRef,
@@ -211,6 +317,7 @@ export function FlyerOverlay({
           flights.delete(id);
         }
       }
+      const drawn: { flyer: Flyer; flight: Flight; depth: number }[] = [];
       for (const flyer of flyersRef.current) {
         if (flyer.waypoints.length === 0) continue;
         const route = JSON.stringify(flyer.waypoints);
@@ -256,15 +363,41 @@ export function FlyerOverlay({
 
         const here = toScreen(flight.position, camera, width, height);
         if (here.visible) {
-          if (movingRef.current) {
+          if (movingRef.current && !flyer.working) {
             flight.trail.unshift(here);
             flight.trail.length = Math.min(flight.trail.length, TRAIL_SAMPLES);
+          } else if (!movingRef.current) {
+            flight.trail.length = 0;
           }
-          drawTrail(ctx, flight.trail, flyer.colour);
         } else {
           flight.trail.length = 0;
         }
-        drawPlane(ctx, flight, flyer.colour, camera, width, height);
+        drawn.push({
+          flyer,
+          flight,
+          depth: flight.position
+            .clone()
+            .applyMatrix4(camera.matrixWorldInverse).z,
+        });
+      }
+
+      // What lies on the floor first, then the badges, furthest first.
+      for (const { flyer, flight } of drawn) {
+        drawTrail(ctx, flight.trail, flyer.colour);
+        drawRing(
+          ctx,
+          flight,
+          flyer,
+          movingRef.current,
+          now,
+          camera,
+          width,
+          height,
+        );
+      }
+      drawn.sort((a, b) => a.depth - b.depth);
+      for (const { flyer, flight } of drawn) {
+        drawBadge(ctx, flight, flyer, movingRef.current, camera, width, height);
       }
     };
 

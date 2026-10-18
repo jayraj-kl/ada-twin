@@ -1,10 +1,26 @@
 import type { SimEvent, StationStatus } from "@repo/sim";
 import type { Flyer } from "@/components/viewer/FlyerOverlay";
-import { type AgentSpec, type Point, ROLE_INFO } from "@/twin/project";
+import {
+  type AgentSpec,
+  type Point,
+  ROLE_INFO,
+  type Role,
+} from "@/twin/project";
 
-// The world is Y-down, so flying above a pin means a smaller Y.
-const FLY_HEIGHT = 0.45;
+// How far from a station an agent walks round it, or stands to work on it.
 const CIRCLE_RADIUS = 0.3;
+const STAND_OFF = 0.2;
+
+// Each role's badge glyph: lucide's clipboard-list, wrench and hard-hat
+// (ISC licence), with their rects written as paths.
+const GLYPHS: Record<Role, string> = {
+  planner:
+    "M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2 M12 11h4 M12 16h4 M8 11h.01 M8 16h.01",
+  maintenance:
+    "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
+  supervisor:
+    "M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5 M14 6a6 6 0 0 1 6 6v3 M4 15v-3a6 6 0 0 1 6-6 M3 15h18a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1z",
+};
 
 export const STATUS_WORD: Partial<Record<StationStatus, string>> = {
   blocked: "blocked",
@@ -74,15 +90,13 @@ export function centroid(pins: Point[]): Point {
   return [sum[0]! / pins.length, sum[1]! / pins.length, sum[2]! / pins.length];
 }
 
-const above = ([x, y, z]: Point): Point => [x, y - FLY_HEIGHT, z];
-
-/** A small loop over a station, for an agent that is working on it. */
+/** A small loop round a station, for an agent with only one to walk to. */
 function circle(centre: Point): Point[] {
   return Array.from({ length: 8 }, (_, step): Point => {
     const angle = (step / 8) * Math.PI * 2;
     return [
       centre[0] + Math.cos(angle) * CIRCLE_RADIUS,
-      centre[1] - FLY_HEIGHT,
+      centre[1],
       centre[2] + Math.sin(angle) * CIRCLE_RADIUS,
     ];
   });
@@ -95,8 +109,8 @@ export interface Stop {
 }
 
 /**
- * A paper plane per agent: technicians circle the station their crew is
- * working on, everyone else walks the line.
+ * A marker per agent: technicians stand at the station their crew is working
+ * on, everyone else walks the line.
  */
 export function flyersFor(
   stops: Stop[],
@@ -107,32 +121,40 @@ export function flyersFor(
   // Parts never pass auxiliary machines, so nobody walks the line past them;
   // a technician still flies out to repair one.
   const line = stops.filter(({ auxiliary }) => !auxiliary);
-  const rounds = (line.length > 0 ? line : stops).map((stop) =>
-    above(stop.point),
-  );
+  const rounds = (line.length > 0 ? line : stops).map(({ point }) => point);
   const technicians = agents.filter((agent) => agent.role === "maintenance");
   return agents.map((agent, index) => {
     const colour = ROLE_INFO[agent.role].colour;
+    const glyph = GLYPHS[agent.role];
     const job =
       agent.role === "maintenance"
         ? stops.find(({ id }) => id === jobs[technicians.indexOf(agent)])
         : undefined;
-    if (job) return { id: agent.id, colour, waypoints: circle(job.point) };
-    if (rounds.length === 1) {
-      const [x, y, z] = rounds[0]!;
+    if (job) {
+      // Crews on one station stand round it rather than on top of each other.
+      const angle = technicians.indexOf(agent) * 2.4;
+      const [x, y, z] = job.point;
       return {
         id: agent.id,
         colour,
-        waypoints: circle([x, y + FLY_HEIGHT, z]),
+        glyph,
+        working: true,
+        waypoints: [
+          [x + Math.cos(angle) * STAND_OFF, y, z + Math.sin(angle) * STAND_OFF],
+        ],
       };
     }
+    if (rounds.length === 1) {
+      return { id: agent.id, colour, glyph, waypoints: circle(rounds[0]!) };
+    }
     // Planners walk the line against the flow, and each agent starts at a
-    // different station, so the planes spread out.
+    // different station, so they spread out.
     const route = agent.role === "planner" ? [...rounds].reverse() : rounds;
     const offset = index % route.length;
     return {
       id: agent.id,
       colour,
+      glyph,
       waypoints: [...route.slice(offset), ...route.slice(0, offset)],
     };
   });

@@ -47,7 +47,7 @@ export function WorldView({
   worldDir: string;
   cameraHeightMetres: number;
   items: OverlayItem[];
-  /** Paper planes flown over the world, e.g. the agents of a run. */
+  /** Markers walked over the world, e.g. the agents of a run. */
   flyers?: Flyer[];
   /** False freezes the flyers where they are; default true. */
   flyersMoving?: boolean;
