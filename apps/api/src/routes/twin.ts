@@ -14,7 +14,9 @@ import {
 } from "@repo/agent";
 import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { selectDocument } from "@repo/db/queries/select";
 import type { Scenario } from "@repo/sim";
+import { readFile } from "../storage";
 
 function model() {
   try {
@@ -214,19 +216,46 @@ twin.post("/parameters", async (c) => {
   const files = form
     .getAll("documents")
     .filter((entry): entry is File => entry instanceof File);
-  if (needsInfo(machine, files.length)) {
+  // Documents uploaded earlier and kept with the project, by id.
+  const projectId = form.get("projectId");
+  const keptIds = form
+    .getAll("documentIds")
+    .filter((entry): entry is string => typeof entry === "string");
+  const kept =
+    typeof projectId === "string" && keptIds.length > 0
+      ? await Promise.all(
+          keptIds.slice(0, 10).map(async (id) => {
+            const row = await selectDocument(projectId, id).catch(() => null);
+            const file = row && (await readFile(row.path));
+            if (!row || !file) {
+              throw new HTTPException(404, {
+                message: `A document of this machine is no longer kept (${id})`,
+              });
+            }
+            return {
+              name: row.name,
+              bytes: new Uint8Array(file.data),
+              mimeType: row.mimeType,
+            };
+          }),
+        )
+      : [];
+  if (needsInfo(machine, files.length + kept.length)) {
     throw new HTTPException(422, {
       message: `Nothing to look "${machine.name}" up by: add its manufacturer and model, or a document`,
     });
   }
 
-  const documents = await Promise.all(
-    files.map(async (file) => ({
-      name: file.name,
-      bytes: new Uint8Array(await file.arrayBuffer()),
-      mimeType: file.type || "application/pdf",
-    })),
-  );
+  const documents = [
+    ...kept,
+    ...(await Promise.all(
+      files.map(async (file) => ({
+        name: file.name,
+        bytes: new Uint8Array(await file.arrayBuffer()),
+        mimeType: file.type || "application/pdf",
+      })),
+    )),
+  ];
   return c.json(await fillParameters(model(), machine, documents));
 });
 

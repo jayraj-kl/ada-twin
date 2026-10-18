@@ -27,12 +27,18 @@ import {
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { stream } from "hono/streaming";
+import { insertRun } from "@repo/db/queries/insert";
+import { updateRun } from "@repo/db/queries/update";
 import { since } from "@repo/logger";
+import { randomUUID } from "node:crypto";
 import { log } from "../logging";
+import { projectPath, storageConfigured, writeJson } from "../storage";
 
 const MAX_AGENTS = 6;
 // Standard-rules days averaged per run; each takes well under a second.
 const MAX_DAYS = 60;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // What the run view replays; per-part start and finish events are left out.
 const REPLAYED: SimEvent["type"][] = [
   "created",
@@ -54,11 +60,13 @@ interface RunBody {
   tickMinutes: number;
   /** Days the standard-rules baseline is averaged over. */
   days: number;
+  /** The project to save the finished run in; nothing is saved without it. */
+  projectId?: string;
 }
 
 function parseBody(body: unknown): RunBody {
-  const { graph, scenario, agents, seed, tickMinutes, days } = (body ??
-    {}) as Partial<RunBody>;
+  const { graph, scenario, agents, seed, tickMinutes, days, projectId } =
+    (body ?? {}) as Partial<RunBody>;
   const fail = (message: string) => {
     throw new HTTPException(400, { message });
   };
@@ -90,6 +98,10 @@ function parseBody(body: unknown): RunBody {
     seed: Number.isFinite(Number(seed)) ? Number(seed) : 1,
     tickMinutes: Math.min(240, Math.max(5, Number(tickMinutes) || 30)),
     days: Math.min(MAX_DAYS, Math.max(1, Math.round(Number(days)) || 1)),
+    projectId:
+      typeof projectId === "string" && UUID.test(projectId)
+        ? projectId
+        : undefined,
   };
 }
 
@@ -228,10 +240,52 @@ run.post("/", async (c) => {
         ...tally,
         ms: since(started),
       });
+      const replayed = operated.events.filter(({ type }) =>
+        REPLAYED.includes(type),
+      );
+      // Kept with the project, so the results step can load it again on any
+      // device. A run that cannot be kept is still shown.
+      let runId: string | undefined;
+      if (body.projectId && storageConfigured() && process.env.DATABASE_URL) {
+        const saving = performance.now();
+        try {
+          runId = randomUUID();
+          const eventsPath = projectPath(
+            body.projectId,
+            "runs",
+            runId,
+            "events.json",
+          );
+          await writeJson(eventsPath, replayed);
+          await insertRun({
+            id: runId,
+            projectId: body.projectId,
+            status: "finished",
+            seed: body.seed,
+            horizon: applied.horizon,
+            maintenanceCrews: applied.maintenanceCrews,
+            tickMinutes: body.tickMinutes,
+            graph: body.graph,
+            scenario: body.scenario,
+            agents: body.agents,
+            adjustments: applied.adjustments,
+            baseline: days[0]!,
+            days,
+            kpis: operated.kpis,
+            decisions: records,
+            eventsPath,
+          });
+          log.info("run saved", { run: runId, events: replayed.length, ms: since(saving) });
+        } catch (error) {
+          log.warn("run not saved", { error, ms: since(saving) });
+          runId = undefined;
+        }
+      }
       await send({
         type: "done",
         kpis: operated.kpis,
-        events: operated.events.filter(({ type }) => REPLAYED.includes(type)),
+        events: replayed,
+        runId,
       });
 
       // The crew's way of working as fixed rules, so the page can replay it
@@ -251,6 +305,11 @@ run.post("/", async (c) => {
             service: Object.keys(playbook.serviceEveryHours).length,
             ms: since(writing),
           });
+          if (runId) {
+            await updateRun(runId, { playbook }).catch((error: unknown) =>
+              log.warn("playbook not saved", { run: runId, error }),
+            );
+          }
           await send({ type: "playbook", playbook });
         } catch (error) {
           if (aborted) return;
