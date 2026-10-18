@@ -1,159 +1,104 @@
-# Turborepo starter
+# AdaTwin
 
-This Turborepo starter is maintained by the Turborepo core team.
+**Redesign before you rebuild.** AdaTwin turns 360° photos of a factory floor into a digital twin, puts a crew of AI agents on it to run a simulated shift, and tells you which changes would make the plant ship more, before you move a single machine.
 
-## Using this example
+[![Watch the 60-second pitch](docs/media/pitch-poster.jpg)](adatwin-pitch.mp4)
 
-Run the following command:
+**Try it:** [ada-twin.web.app](https://ada-twin.web.app). Open a sample plant (boiler room, foundry, machine shop, pump hall or electrical lab) to explore without uploading anything.
 
-```sh
-npx create-turbo@latest
-```
+## How it works
 
-## What's inside?
+A project walks through six steps, one page each:
 
-This Turborepo includes the following packages/apps:
+| Step | What you do |
+| --- | --- |
+| **Capture** | Upload 360° panoramas of your floor. World Labs Marble turns them into a walkable 3D world. |
+| **Twin** | List your machines and draw how material flows between them. Gemini drafts the flow from your description and finds the machines in your photos. |
+| **Scenario** | Set the conditions to test against, in plain words: a heatwave, a rush order, half the maintenance team off sick. |
+| **Agents** | Put a crew on the floor: a planner, technicians and a supervisor, each with a personality. |
+| **Results** | Run the shift and watch the agents decide in the 3D world. Compare them with standard rules over many simulated days, then pick changes, run them on a copy of your twin, and apply the ones that work. |
+| **New plant** | See the applied changes ranked by how much they matter, with Nano Banana drawing them into photos of your plant. |
 
-### Apps and Packages
+The words used here (twin, run, trial, picks, stale) are defined in [GLOSSARY.md](GLOSSARY.md).
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `@next/eslint-plugin-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+## Architecture
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+![AdaTwin architecture](docs/architecture/ada-twin-architecture-lean.png)
 
-### Utilities
+- **Frontend** (`apps/frontend`): React 19, Vite and Tailwind 4, with the 3D world rendered as Gaussian splats. Quick measurements run in the browser on the same simulation as the API. Hosted on Firebase Hosting.
+- **API** (`apps/api`): Hono on Cloud Run. It streams each shift to the page as it happens, runs the Gemini agents on Vertex AI, and keeps projects in Postgres (Cloud SQL) and their files in Cloud Storage.
+- **Simulation** (`packages/sim`): a discrete-event model of the floor: machines, buffers, breakdowns, repairs, crews and scenario effects. It is deterministic for a given seed, so a change is always measured against the same days.
 
-This Turborepo has some additional tools already setup for you:
+The full diagram is in [`docs/architecture`](docs/architecture) (draw.io sources included).
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+## Quick start
 
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+You need Node 24+, pnpm 11, Docker, and a Google Cloud project with Vertex AI enabled.
 
 ```sh
-cd my-turborepo
-turbo build
+pnpm install
+
+# Local Postgres on port 5434
+docker compose up -d db
+
+# Environment: copy each example and fill in the blanks
+cp apps/api/.env.example apps/api/.env
+cp apps/frontend/.env.example apps/frontend/.env
+cp packages/db/.env.example packages/db/.env   # DATABASE_URL=postgres://postgres:postgres@localhost:5434/factory_twin
+
+# Create the tables
+pnpm --filter @repo/db db:migrate
+
+# Gemini on Vertex AI and Cloud Storage sign in with your Google account
+gcloud auth application-default login
+
+pnpm dev
 ```
 
-Without global `turbo`, use your package manager:
+The app runs at http://localhost:3000, with the API at http://localhost:8080.
+
+Keys go in `apps/api/.env`: `GOOGLE_CLOUD_PROJECT` for Gemini, `WORLD_LABS_API_KEY` to build 3D worlds from your own photos, and `GCS_BUCKET` for project files. Local development writes under `GCS_PREFIX=dev/`, so it never touches production files. The samples work without a World Labs key.
+
+## Project structure
+
+```
+apps/
+  frontend/     the web app, one page per step
+  api/          Hono API: shifts, agents, projects, worlds
+packages/
+  sim/          the factory simulation
+  agent/        the Gemini agents: crew, flow drafter, scenario writer, scouts
+  db/           Drizzle schema, queries and migrations
+  world/        World Labs client
+  logger/       structured logging
+  ui/           shared React components
+scripts/        demos, benchmarks and world fetching
+tests/          Vitest tests for the simulation and the agents
+deploy/         Cloud Run and Firebase Hosting deploys
+docs/           architecture diagrams and research notes
+```
+
+## Development
+
+| Command | What it does |
+| --- | --- |
+| `pnpm dev` | Runs the frontend and the API with reload |
+| `pnpm test` | Runs the simulation and agent tests |
+| `pnpm check-types` | Typechecks every workspace |
+| `pnpm lint` | Lints every workspace |
+| `pnpm build` | Builds every workspace |
+
+The agent tests use scripted model replies, so they never call Gemini.
+
+## Deploy
 
 ```sh
-cd my-turborepo
-npx turbo build
-pnpm exec turbo build
-pnpm exec turbo build
+pnpm run deploy       # API: builds on Cloud Build, migrates the database, rolls out to Cloud Run
+pnpm run deploy:web   # Frontend: builds against the API and deploys to Firebase Hosting
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+The one-time Google Cloud setup (project, Cloud SQL, bucket, secrets) is in [deploy/README.md](deploy/README.md).
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## Built with
 
-```sh
-turbo build --filter=docs
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+Gemini on Vertex AI (agents, flow drafting, scenarios, reports) · Google ADK · World Labs Marble (3D worlds) · Nano Banana (redrawn photos) · React · Vite · Tailwind · Hono · Drizzle · Postgres · Cloud Run · Cloud Storage · Firebase Hosting · Turborepo
