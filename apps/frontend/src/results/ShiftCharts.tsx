@@ -1,4 +1,5 @@
 import type { StationStatus } from "@repo/sim";
+import { usePlantUnit } from "@/scenario/plant";
 import { ChartLineIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,7 @@ export function ShiftCharts({
   open: boolean;
   onToggle: () => void;
 }) {
+  const unit = usePlantUnit();
   const shippedNow = valueAt(timeline.shipped, now);
   const standardNow = standard ? valueAt(standard, now) : null;
   const wipNow = valueAt(timeline.wip, now);
@@ -188,7 +190,7 @@ export function ShiftCharts({
                 preserveAspectRatio="none"
                 className="absolute inset-0 size-full overflow-visible"
                 role="img"
-                aria-label={`${shippedNow} parts shipped by ${clock(now)}`}
+                aria-label={`${shippedNow} ${unit} shipped by ${clock(now)}`}
               >
                 <line
                   x1={0}
@@ -269,7 +271,7 @@ export function ShiftCharts({
                 preserveAspectRatio="none"
                 className="absolute inset-0 size-full overflow-visible"
                 role="img"
-                aria-label={`${wipNow} parts in progress at ${clock(now)}`}
+                aria-label={`${wipNow} ${unit} in progress at ${clock(now)}`}
               >
                 {paths.wip && (
                   <path

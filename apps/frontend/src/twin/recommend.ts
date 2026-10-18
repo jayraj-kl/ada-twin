@@ -85,19 +85,27 @@ export async function measure(
   run: StoredRun,
   changes: Pick<Change, "diffs" | "extraCrews">[],
 ): Promise<Measured> {
-  const applied = applyScenario(run.graph, run.scenario);
-  const graph = applyDiffs(
-    applied.graph,
-    changes.flatMap(({ diffs }) => diffs),
+  // The changes are made to the twin and the scenario then applied to it, as
+  // applying them for good and running the shift does: new machines feel the
+  // heat too, and extra crews are as short-handed as the rest.
+  const applied = applyScenario(
+    applyDiffs(
+      run.graph,
+      changes.flatMap(({ diffs }) => diffs),
+    ),
+    {
+      ...run.scenario,
+      maintenanceCrews:
+        (run.scenario.maintenanceCrews ?? 1) +
+        changes.reduce((sum, { extraCrews }) => sum + extraCrews, 0),
+    },
   );
   const days = await simulateDays(
-    graph,
+    applied.graph,
     {
       seed: run.seed,
       horizon: applied.horizon,
-      maintenanceCrews:
-        applied.maintenanceCrews +
-        changes.reduce((sum, { extraCrews }) => sum + extraCrews, 0),
+      maintenanceCrews: applied.maintenanceCrews,
       tickInterval: run.tickMinutes * 60,
     },
     daysOf(run).length,

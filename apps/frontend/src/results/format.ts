@@ -35,16 +35,16 @@ export const signed = (value: number, digits = 0) =>
 export const signedAverage = (value: number) =>
   signed(value, Number.isInteger(value) ? 0 : 1);
 
-export function headline(run: StoredRun): string {
+export function headline(run: StoredRun, unit = run.scenario.unit ?? "parts"): string {
   const gained = run.kpis.completed - run.baseline.completed;
   const target = run.scenario.targets?.throughputPerShift;
   const crew =
     run.agents.length === 0
       ? "No agents ran this shift"
       : gained > 0
-        ? `The crew shipped ${gained} more parts than standard rules`
+        ? `The crew shipped ${gained} more ${unit} than standard rules`
         : gained < 0
-          ? `The crew shipped ${-gained} fewer parts than standard rules`
+          ? `The crew shipped ${-gained} fewer ${unit} than standard rules`
           : "The crew matched standard rules";
   if (!target) return crew;
   return run.kpis.completed >= target

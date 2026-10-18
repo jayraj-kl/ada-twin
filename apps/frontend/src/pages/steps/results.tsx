@@ -1,4 +1,5 @@
 import {
+  type FactoryGraph,
   type Kpis,
   type Scenario,
   type SimEvent,
@@ -42,6 +43,8 @@ import {
   flyersFor,
 } from "@/results/floor";
 import { costKey, signed } from "@/results/format";
+import { usePlantScenario } from "@/scenario/plant";
+import { PickedChanges, type Picks, type Trial as TrialState } from "@/results/PickedChanges";
 import { ShiftCharts } from "@/results/ShiftCharts";
 import { ChangesTab, type RedesignVersion, ResultsTab } from "@/results/tabs";
 import { type Series, timelineOf } from "@/results/timeline";
@@ -64,14 +67,12 @@ import {
   DAYS_KEY,
   DEFAULT_CREW,
   DEFAULT_DAYS,
-  DEFAULT_SCENARIO,
   DESIGN_CHAT_KEY,
   type DecisionRecord,
   HISTORY_KEY,
   MACHINES_KEY,
   MAX_DAYS,
   ROLE_INFO,
-  SCENARIO_KEY,
   type SavedMachine,
   type StoredRun,
   buildGraph,
@@ -109,6 +110,31 @@ interface Scouted {
 
 const runId = (run: StoredRun) =>
   `${run.seed}:${run.events.length}:${run.kpis.completed}:${run.decisions.length}`;
+/** The crew's playbook replayed on each of the run's days. */
+function replayCrew(run: StoredRun & { playbook: NonNullable<StoredRun["playbook"]> }) {
+  const plant = applyScenario(run.graph, run.scenario);
+  return simulateDays(
+    plant.graph,
+    {
+      seed: run.seed,
+      horizon: plant.horizon,
+      maintenanceCrews: plant.maintenanceCrews,
+      tickInterval: run.tickMinutes * 60,
+    },
+    daysOf(run).length,
+    playbookPolicy(run.playbook),
+  );
+}
+
+/** The picked changes, run for real on a copy of the twin. */
+interface Trial {
+  /** The run and the picks it was made for. */
+  key: string;
+  run: StoredRun;
+  /** Its crew's playbook replayed on each day, once written. */
+  crewDays: Kpis[] | null;
+}
+
 // Simulated seconds played per real second; the second plays an eight-hour
 // shift in two minutes.
 const SPEEDS = [120, 240, 480, 960];
@@ -123,6 +149,8 @@ interface Live {
   horizon: number;
   decisions: DecisionRecord[];
   events: SimEvent[];
+  /** Set when the shift runs on the twin with the picked changes. */
+  trial?: { graph: FactoryGraph; scenario: Scenario };
 }
 
 const PARAM_NOTE: Record<string, string> = {
@@ -228,10 +256,6 @@ export default function ResultsPage() {
     NO_MACHINES,
   );
   const [flow, setFlow] = useStored<Flow>(FLOW_KEY, EMPTY_FLOW);
-  const [scenario, setScenario] = useStored<Scenario>(
-    SCENARIO_KEY,
-    DEFAULT_SCENARIO,
-  );
   const [crew] = useStored<CrewSettings>(AGENTS_KEY, DEFAULT_CREW);
   const [run, setRun, runLoaded] = useLatestRun(projectId);
   const [kept, setKept] = useStored<Change[]>(ACCEPTED_KEY, NO_CHANGES);
@@ -269,6 +293,14 @@ export default function ResultsPage() {
   const cancel = useRef<AbortController | null>(null);
 
   const graph = useMemo(() => buildGraph(machines, flow), [machines, flow]);
+  // Sized to the plant until set; running a shift on it sets it, so the
+  // scenario stays what was run when the twin changes after.
+  const {
+    scenario,
+    setScenario,
+    saved: scenarioSaved,
+    unit,
+  } = usePlantScenario(graph);
   const problems = useMemo(
     () =>
       flowProblems(
@@ -297,6 +329,7 @@ export default function ResultsPage() {
     setPlaying(false);
     setView("baseline");
     setShowDecisions(true);
+    if (!scenarioSaved) setScenario(scenario);
     const opening = { horizon: scenario.shiftHours * 3600 };
     const state: Live = { horizon: opening.horizon, decisions: [], events: [] };
     setLive({ ...state });
@@ -395,28 +428,49 @@ export default function ResultsPage() {
   const liveTime = live
     ? Math.max(live.events.at(-1)?.time ?? 0, live.decisions.at(-1)?.time ?? 0)
     : 0;
-  const floor = useMemo(
-    () =>
-      live ? floorAt(live.events, Infinity) : floorAt(run?.events ?? [], time),
-    [live, run, time],
-  );
+
+  // The picked changes, run with the crew on a copy of the twin.
+  const [trial, setTrial] = useState<Trial | null>(null);
+  // Agent decisions so far while it runs; null when it is not running.
+  const [trialProgress, setTrialProgress] = useState<number | null>(null);
+  const [trialProblem, setTrialProblem] = useState("");
+  const trialCancel = useRef<AbortController | null>(null);
+  useEffect(() => () => trialCancel.current?.abort(), []);
+  const trialKey = run
+    ? JSON.stringify([
+        runId(run),
+        kept.map(({ diffs, extraCrews }) => [diffs, extraCrews]),
+      ])
+    : "";
+  const trialCurrent =
+    kept.length > 0 && trial !== null && trial.key === trialKey;
 
   // --- the charts ------------------------------------------------------------
+  // The redesign in view, once run with the picks, charts that run instead.
+  const replayed =
+    view === "redesign" && !live && trialCurrent ? trial!.run : run;
+  const floor = useMemo(
+    () =>
+      live
+        ? floorAt(live.events, Infinity)
+        : floorAt(replayed?.events ?? [], time),
+    [live, replayed, time],
+  );
   const liveEvents = live?.events;
   const timeline = useMemo(
-    () => timelineOf(liveEvents ?? run?.events ?? []),
-    [liveEvents, run],
+    () => timelineOf(liveEvents ?? replayed?.events ?? []),
+    [liveEvents, replayed],
   );
   // What is charted: the shift being run, or the run being replayed.
   const charted = live
     ? {
-        graph,
-        scenario,
+        graph: live.trial?.graph ?? graph,
+        scenario: live.trial?.scenario ?? scenario,
         seed,
         tickMinutes: crew.tickMinutes,
         agents: crew.agents,
       }
-    : run;
+    : replayed;
   const chartedKey = charted
     ? JSON.stringify([
         charted.graph,
@@ -518,18 +572,9 @@ export default function ResultsPage() {
     setCrewDays(null);
     if (!run?.playbook) return;
     let cancelled = false;
-    const plant = applyScenario(run.graph, run.scenario);
-    simulateDays(
-      plant.graph,
-      {
-        seed: run.seed,
-        horizon: plant.horizon,
-        maintenanceCrews: plant.maintenanceCrews,
-        tickInterval: run.tickMinutes * 60,
-      },
-      daysOf(run).length,
-      playbookPolicy(run.playbook),
-    ).then((result) => !cancelled && setCrewDays(result));
+    replayCrew({ ...run, playbook: run.playbook }).then(
+      (result) => !cancelled && setCrewDays(result),
+    );
     return () => {
       cancelled = true;
     };
@@ -625,6 +670,136 @@ export default function ResultsPage() {
       cancelled = true;
     };
   }, [run, before, kept, pending, measureOnce]);
+
+  // What each suggestion would add on top of the changes already picked.
+  const [onTop, setOnTop] = useState<Record<string, number | "failed">>({});
+  const candidates = useMemo(
+    () => [
+      ...(suggestions ?? []),
+      ...(run && scoutedFor?.run === runId(run) ? scoutedFor.changes : []),
+    ],
+    [suggestions, scoutedFor, run],
+  );
+  useEffect(() => {
+    setOnTop({});
+    if (!run || !before || kept.length === 0) return;
+    let cancelled = false;
+    const base = measureOnce(kept);
+    for (const change of candidates) {
+      if (kept.some(({ id }) => id === change.id)) continue;
+      Promise.all([base, measureOnce([...kept, change])]).then(
+        ([from, to]) =>
+          !cancelled &&
+          setOnTop((current) => ({
+            ...current,
+            [change.id]: gainOf(from, to).mean,
+          })),
+        () =>
+          !cancelled &&
+          setOnTop((current) => ({ ...current, [change.id]: "failed" })),
+      );
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [run, before, kept, candidates, measureOnce]);
+
+  // --- the picked changes, run with the crew on a copy of the twin -----------
+
+  async function runTrial() {
+    if (!run || kept.length === 0) return;
+    trialCancel.current?.abort();
+    const controller = new AbortController();
+    trialCancel.current = controller;
+    const key = trialKey;
+    // The twin as applying the picks would leave it; nothing is saved.
+    const next = applyToTwin({ machines, flow, scenario: run.scenario }, kept);
+    const body = {
+      graph: buildGraph(next.machines, next.flow),
+      scenario: next.scenario,
+      agents: run.agents,
+      seed: run.seed,
+      tickMinutes: run.tickMinutes,
+      days: daysOf(run).length,
+    };
+    setTrialProblem("");
+    setTrialProgress(0);
+    setRunProblem("");
+    setPlaying(false);
+    setShowDecisions(true);
+    const state: Live = {
+      horizon: body.scenario.shiftHours * 3600,
+      decisions: [],
+      events: [],
+      trial: { graph: body.graph, scenario: body.scenario },
+    };
+    setLive({ ...state });
+    let started: Pick<
+      StoredRun,
+      "horizon" | "maintenanceCrews" | "adjustments" | "baseline" | "days"
+    > | null = null;
+    let finished: StoredRun | null = null;
+    const decisions: StoredRun["decisions"] = [];
+    try {
+      await streamRun(
+        body,
+        (line) => {
+          if (line.type === "start") {
+            started = line;
+            state.horizon = line.horizon;
+          } else if (line.type === "events") {
+            state.events = [...state.events, ...line.events];
+            setLive({ ...state });
+          } else if (line.type === "decision") {
+            decisions.push(line.record);
+            state.decisions = [...decisions];
+            setLive({ ...state });
+            setTrialProgress(decisions.length);
+          } else if (line.type === "error") {
+            throw new Error(line.message);
+          } else if (line.type === "done" && started) {
+            finished = {
+              ...started,
+              seed: body.seed,
+              tickMinutes: body.tickMinutes,
+              scenario: body.scenario,
+              graph: body.graph,
+              agents: body.agents,
+              kpis: line.kpis,
+              events: line.events,
+              decisions,
+            };
+            setTrial({ key, run: finished, crewDays: null });
+            setTrialProgress(null);
+            // Replayed on the redesign, from the start of the shift.
+            setLive(null);
+            setView("redesign");
+            setTime(0);
+            setPlaying(true);
+          } else if (line.type === "playbook" && finished && line.playbook) {
+            const withPlaybook = { ...finished, playbook: line.playbook };
+            void replayCrew(withPlaybook).then((crewDays) =>
+              setTrial((current) =>
+                current?.key === key
+                  ? { ...current, run: withPlaybook, crewDays }
+                  : current,
+              ),
+            );
+          }
+        },
+        controller.signal,
+      );
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setTrialProblem(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (trialCancel.current === controller) {
+        setTrialProgress(null);
+        setLive((current) => (current?.trial ? null : current));
+      }
+    }
+  }
 
   /** Saves the redesign as a new version. */
   function commit(next: Change[], label: string) {
@@ -933,19 +1108,21 @@ export default function ResultsPage() {
         .sort((a, b) => a.row - b.row),
     [machines, flow.positions],
   );
-  const agents = live ? crew.agents : (run?.agents ?? crew.agents);
+  const agents = live ? crew.agents : (replayed?.agents ?? crew.agents);
   const jobsKey = floor.jobs.join("\n");
   const flyers = useMemo(
     () => flyersFor(stops, agents, jobsKey ? jobsKey.split("\n") : []),
     [stops, agents, jobsKey],
   );
   const showRedesign = view === "redesign" && !live;
+  // The redesign as notes on its pins, until its shift has been run.
+  const redesignNotes = showRedesign && !trialCurrent;
   const notes = useMemo(
     () => pinNotes(kept, run ? run.graph.edges : flow.links),
     [kept, run, flow.links],
   );
   const items = stops.map((stop) => {
-    if (showRedesign) {
+    if (redesignNotes) {
       const note = notes.get(stop.id);
       return {
         id: stop.id,
@@ -981,7 +1158,9 @@ export default function ResultsPage() {
 
   const decisions = live
     ? [...live.decisions].reverse()
-    : (run?.decisions ?? []).filter((record) => record.time <= time).reverse();
+    : (replayed?.decisions ?? [])
+        .filter((record) => record.time <= time)
+        .reverse();
   const stopped = [...floor.statuses]
     .filter(
       ([, status]) =>
@@ -989,6 +1168,29 @@ export default function ResultsPage() {
     )
     .map(([id]) => machines.find((machine) => machine.id === id)?.name ?? id);
   const gain = redesign && before ? gainOf(before, redesign).mean : null;
+  const picks: Picks = {
+    count: kept.length,
+    together: kept.length === 0 ? null : gain,
+    separately: kept.every(({ id }) => typeof alone[id] === "number")
+      ? kept.reduce((sum, { id }) => sum + (alone[id] as number), 0)
+      : null,
+  };
+  const trialState: TrialState = {
+    after: trialCurrent
+      ? {
+          run: trial!.run,
+          rules: daysOf(trial!.run),
+          agents: trial!.crewDays,
+        }
+      : null,
+    running: trialProgress !== null,
+    decisions: trialProgress ?? 0,
+    outdated: kept.length > 0 && trial !== null && !trialCurrent,
+    blocked: stale
+      ? "Your twin has changed since this run: run the shift again first."
+      : "",
+    problem: trialProblem,
+  };
   const suggestionRows = suggestions?.map((change) => ({
     ...change,
     added: kept.some(({ id }) => id === change.id),
@@ -1076,6 +1278,11 @@ export default function ResultsPage() {
         suggestions={suggestionRows ?? null}
         problem={designProblem}
         onAdd={addSuggestion}
+        onTop={onTop}
+        picks={picks}
+        trial={trialState}
+        onRunTrial={() => void runTrial()}
+        onRemove={(change) => dropKept(change.id)}
         scouted={scoutedRows ?? null}
         scouting={scouting}
         scoutNote={
@@ -1149,7 +1356,7 @@ export default function ResultsPage() {
             worldDir={worldDir}
             cameraHeightMetres={CAMERA_HEIGHT_M}
             items={items}
-            flyers={showRedesign ? [] : flyers}
+            flyers={redesignNotes ? [] : flyers}
             flyersMoving={Boolean(live) || playing}
             style={{ width: "100%", height: "100%", cursor: "grab" }}
           />
@@ -1235,15 +1442,23 @@ export default function ResultsPage() {
         {/* What the floor looks like at the playhead, or what the redesign does. */}
         {run && !live && (
           <div className="pointer-events-none absolute top-16 left-3 flex flex-col items-start gap-1.5 sm:left-4">
-            {showRedesign ? (
+            {showRedesign && kept.length > 0 && gain !== null ? (
+              <div className="pointer-events-auto w-[min(22rem,calc(100vw-2rem))]">
+                <PickedChanges
+                  picks={picks}
+                  trial={trialState}
+                  hasAgents={run.agents.length > 0}
+                  onRun={() => void runTrial()}
+                  over
+                />
+              </div>
+            ) : showRedesign ? (
               <span className="rounded-full border border-white/15 bg-[#14140f]/80 px-3 py-1 text-xs text-white backdrop-blur-md">
                 {kept.length === 0
                   ? "No changes yet: add one on the right"
-                  : gain === null
-                    ? measuring
-                      ? "Measuring the redesign…"
-                      : "The redesign cannot be simulated"
-                    : `${signed(gain)} parts per shift on standard rules`}
+                  : measuring
+                    ? "Measuring the redesign…"
+                    : "The redesign cannot be simulated"}
               </span>
             ) : (
               <span className="rounded-full border border-white/15 bg-[#14140f]/80 px-3 py-1 font-mono text-xs text-white backdrop-blur-md">
@@ -1267,18 +1482,19 @@ export default function ResultsPage() {
             desktop ? "bottom-0" : "bottom-[136px]",
           )}
         >
-          {(live || run) && !showRedesign && (
+          {(live || run) && (
             <div className="order-first w-full max-w-[460px] xl:order-last xl:ml-auto xl:max-w-[560px] xl:flex-1">
               <ShiftCharts
                 timeline={timeline}
                 standard={standard}
                 target={
-                  (live ? scenario : run!.scenario).targets?.throughputPerShift
+                  (live ? scenario : replayed!.scenario).targets
+                    ?.throughputPerShift
                 }
                 horizon={live ? live.horizon : horizon}
                 now={live ? liveTime : time}
                 complete={!live}
-                decisions={live ? live.decisions : run!.decisions}
+                decisions={live ? live.decisions : replayed!.decisions}
                 stations={lanes}
                 onSeek={
                   live
@@ -1423,7 +1639,7 @@ export default function ResultsPage() {
                       onClick={() => setShowDecisions((open) => !open)}
                     >
                       <ListIcon className="mr-1 inline size-3.5 align-[-3px]" />
-                      Decisions · {run.decisions.length}
+                      Decisions · {(replayed ?? run).decisions.length}
                       {showDecisions ? (
                         <ChevronDownIcon className="ml-0.5 inline size-3.5 align-[-3px]" />
                       ) : (

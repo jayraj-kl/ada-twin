@@ -27,6 +27,8 @@ import {
   signed,
   signedAverage,
 } from "./format";
+import { usePlantUnit } from "@/scenario/plant";
+import { PickedChanges, type Picks, type Trial } from "./PickedChanges";
 
 /** One saved state of the redesign. */
 export interface RedesignVersion {
@@ -52,13 +54,78 @@ export const originLabel = (change: Change) =>
       ? KIND_LABEL[change.kind]
       : "Suggested";
 
-/** One scouted change: the problem it answers, its gain, and its sources. */
-function ScoutedRow({
+/** What a change adds to the changes already picked, under its own gain. */
+function OnTop({ value }: { value: number | "failed" | undefined }) {
+  const unit = usePlantUnit();
+  if (value === undefined) return null;
+  return (
+    <span
+      className={cn(
+        "block text-right font-mono text-[11px] font-normal",
+        value === "failed" || value <= 0
+          ? "text-muted-foreground"
+          : "text-success",
+      )}
+    >
+      {value === "failed"
+        ? "not with your picks"
+        : `${signedAverage(value)} ${unit} with your picks`}
+    </span>
+  );
+}
+
+/** Picks a change, or takes a picked one back out: its tick turns to a cross on hover. */
+function PickButton({
   change,
   onAdd,
+  onRemove,
 }: {
   change: MeasuredChange & { added: boolean };
   onAdd: (change: MeasuredChange) => void;
+  onRemove: (change: MeasuredChange) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => (change.added ? onRemove(change) : onAdd(change))}
+      aria-pressed={change.added}
+      aria-label={
+        change.added
+          ? `Remove ${change.title} from the redesign`
+          : `Add ${change.title} to the redesign`
+      }
+      title={change.added ? "Picked: click to take it out" : undefined}
+      className={cn(
+        "group/pick grid size-8 shrink-0 place-items-center rounded-full border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
+        change.added
+          ? "border-ink bg-primary text-[#14140f] hover:bg-card hover:text-foreground"
+          : "border-border hover:border-ink hover:bg-accent",
+      )}
+    >
+      {change.added ? (
+        <>
+          <CheckIcon className="size-4 group-hover/pick:hidden group-focus-visible/pick:hidden" />
+          <XIcon className="hidden size-4 group-hover/pick:block group-focus-visible/pick:block" />
+        </>
+      ) : (
+        <PlusIcon className="size-4" />
+      )}
+    </button>
+  );
+}
+
+/** One scouted change: the problem it answers, its gain, and its sources. */
+function ScoutedRow({
+  change,
+  onTop,
+  onAdd,
+  onRemove,
+}: {
+  change: MeasuredChange & { added: boolean };
+  /** What it adds on top of the picked changes, once measured. */
+  onTop?: number | "failed";
+  onAdd: (change: MeasuredChange) => void;
+  onRemove: (change: MeasuredChange) => void;
 }) {
   return (
     <li className="flex items-start gap-3 rounded-2xl border border-border p-3">
@@ -69,6 +136,7 @@ function ScoutedRow({
           </span>
           <span className="shrink-0 font-mono text-xs font-semibold text-success">
             {signedAverage(change.gain)}/shift
+            {!change.added && <OnTop value={onTop} />}
           </span>
         </div>
         <strong className="mt-1 block text-[13px] leading-snug">
@@ -110,28 +178,7 @@ function ScoutedRow({
           )}
         </p>
       </div>
-      <button
-        type="button"
-        disabled={change.added}
-        onClick={() => onAdd(change)}
-        aria-label={
-          change.added
-            ? `${change.title} is in the redesign`
-            : `Add ${change.title} to the redesign`
-        }
-        className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-full border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
-          change.added
-            ? "border-ink bg-primary text-[#14140f]"
-            : "border-border hover:border-ink hover:bg-accent",
-        )}
-      >
-        {change.added ? (
-          <CheckIcon className="size-4" />
-        ) : (
-          <PlusIcon className="size-4" />
-        )}
-      </button>
+      <PickButton change={change} onAdd={onAdd} onRemove={onRemove} />
     </li>
   );
 }
@@ -178,6 +225,7 @@ function PlaybookRules({
   playbook: Playbook;
   names: Map<string, string>;
 }) {
+  const unit = usePlantUnit();
   const name = (id: string) => names.get(id) ?? id;
   const release = Object.entries(playbook.release);
   const service = Object.entries(playbook.serviceEveryHours);
@@ -187,7 +235,7 @@ function PlaybookRules({
     ...release.map(([source, rule]) => {
       const paces = [
         rule.slowAboveWip !== undefined &&
-          `80% above ${rule.slowAboveWip} parts in progress`,
+          `80% above ${rule.slowAboveWip} ${unit} in progress`,
         rule.fastBelowWip !== undefined && `120% below ${rule.fastBelowWip}`,
       ].filter(Boolean);
       return `${name(source)}: release at ${paces.join(", ")}, 100% otherwise.`;
@@ -218,7 +266,10 @@ function PlaybookRules({
   );
 }
 
-/** The measured outcome: standard rules, the agents, and the redesign. */
+/**
+ * The measured outcome: standard rules against the agents. What a redesign
+ * would change is measured on the Changes tab.
+ */
 export function ResultsTab({
   run,
   redesign,
@@ -230,6 +281,11 @@ export function ResultsTab({
   suggestions,
   problem,
   onAdd,
+  onTop,
+  picks,
+  trial,
+  onRunTrial,
+  onRemove,
   scouted,
   scouting,
   scoutNote,
@@ -248,6 +304,13 @@ export function ResultsTab({
   suggestions: (MeasuredChange & { added: boolean })[] | null;
   problem: string;
   onAdd: (change: MeasuredChange) => void;
+  /** What each change not picked adds on top of the picked ones. */
+  onTop: Record<string, number | "failed">;
+  picks: Picks;
+  trial: Trial;
+  /** Takes a picked change back out. */
+  onRemove: (change: MeasuredChange) => void;
+  onRunTrial: () => void;
   /** What the AI found the plant is missing; null before anyone asked. */
   scouted: (MeasuredChange & { added: boolean })[] | null;
   scouting: boolean;
@@ -255,6 +318,7 @@ export function ResultsTab({
   scoutNote: string;
   onScout: () => void;
 }) {
+  const unit = usePlantUnit();
   const names = new Map(run.graph.nodes.map(({ id, name }) => [id, name]));
   const { kpis } = run;
   const ruleDays = daysOf(run);
@@ -272,7 +336,6 @@ export function ResultsTab({
     ...(hasAgents
       ? [{ key: "agents", label: "Your agents", days: crewDays ?? [kpis] }]
       : []),
-    { key: "redesign", label: "Redesign", days: redesign?.days ?? null },
   ];
   const rows: {
     label: string;
@@ -281,7 +344,7 @@ export function ResultsTab({
     digits?: number;
     lowerIsBetter?: boolean;
   }[] = [
-    { label: "Parts shipped", value: (k) => k.completed, show: averaged },
+    { label: `${unit[0]!.toUpperCase()}${unit.slice(1)} shipped`, value: (k) => k.completed, show: averaged },
     {
       label: "Average work in progress",
       value: (k) => k.averageWip,
@@ -290,7 +353,7 @@ export function ResultsTab({
       lowerIsBetter: true,
     },
     {
-      label: "Parts scrapped",
+      label: `${unit[0]!.toUpperCase()}${unit.slice(1)} scrapped`,
       value: (k) => k.scrapped,
       show: averaged,
       lowerIsBetter: true,
@@ -306,6 +369,14 @@ export function ResultsTab({
       : []),
   ];
 
+  const after = trial.after;
+  // With the picks run, each column shows the plant with them, and what it was.
+  const afterDays = (key: string): Kpis[] | null =>
+    !after
+      ? null
+      : key === "rules"
+        ? after.rules
+        : (after.agents ?? [after.run.kpis]);
   const shown = showRedesign && redesign ? redesign.average : kpis;
   const stations = run.graph.nodes.filter(
     (node): node is Extract<FactoryNode, { kind: "station" }> =>
@@ -323,7 +394,7 @@ export function ResultsTab({
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-lg leading-snug font-semibold text-balance">
-          {headline(run)}
+          {headline(run, unit)}
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {dayCount > 1
@@ -331,10 +402,16 @@ export function ResultsTab({
             : "One day of random events. "}
           {hasAgents &&
             "Your agents worked one day for real; their playbook replays how they worked on the rest. "}
-          Changes are measured on standard rules, so they compare fairly.
         </p>
       </div>
 
+      {after && (
+        <p className="-mb-4 text-xs font-medium">
+          With your {picks.count} picked{" "}
+          {picks.count === 1 ? "change" : "changes"}, and what your plant did
+          before them
+        </p>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="text-[11px] text-muted-foreground">
@@ -365,6 +442,30 @@ export function ResultsTab({
                         className="py-2 pl-3 text-right align-top text-muted-foreground"
                       >
                         {measuring ? "…" : "–"}
+                      </td>
+                    );
+                  }
+                  const changed = afterDays(column.key);
+                  if (changed) {
+                    const was = mean(column.days.map(row.value));
+                    const now = mean(changed.map(row.value));
+                    return (
+                      <td
+                        key={column.key}
+                        className="py-2 pl-3 text-right align-top font-mono whitespace-nowrap tabular-nums"
+                      >
+                        <span className="block font-semibold">
+                          {row.show(now)}
+                        </span>
+                        <span className="block text-[11px] leading-tight text-muted-foreground">
+                          was {row.show(was)}
+                        </span>
+                        <Delta
+                          value={now}
+                          base={was}
+                          digits={row.digits}
+                          lowerIsBetter={row.lowerIsBetter}
+                        />
                       </td>
                     );
                   }
@@ -407,8 +508,10 @@ export function ResultsTab({
             {columns.map((column) => (
               <td key={column.key} className="py-2 pl-3 text-right text-xs">
                 {column.days
-                  ? (names.get(averageKpis(column.days).bottleneck ?? "") ??
-                    "None")
+                  ? (names.get(
+                      averageKpis(afterDays(column.key) ?? column.days)
+                        .bottleneck ?? "",
+                    ) ?? "None")
                   : "–"}
               </td>
             ))}
@@ -431,8 +534,8 @@ export function ResultsTab({
                   ? "Their column is their one real day; run the shift again to replay the crew on every day."
                   : "Replaying the crew's playbook on every day…"
                 : faithful
-                  ? `Playbook on the crew's day: ${replayed} parts; the real crew shipped ${kpis.completed}.`
-                  : `Playbook on the crew's day: ${replayed} parts, but the real crew shipped ${kpis.completed}, so treat their averages with care.`}
+                  ? `Playbook on the crew's day: ${replayed} ${unit}; the real crew shipped ${kpis.completed}.`
+                  : `Playbook on the crew's day: ${replayed} ${unit}, but the real crew shipped ${kpis.completed}, so treat their averages with care.`}
         </p>
       )}
       {run.playbook && (
@@ -451,7 +554,9 @@ export function ResultsTab({
         <h3 className={sectionTitle}>
           Suggested changes
           <span className="text-[11px] font-normal text-muted-foreground">
-            each re-simulated on its own, over the same days
+            {picks.count > 0
+              ? "on its own, and on top of your picks"
+              : "each re-simulated on its own, over the same days"}
           </span>
         </h3>
         {!suggestions ? (
@@ -479,6 +584,7 @@ export function ResultsTab({
                       )}
                     >
                       {signedAverage(change.gain)}/shift
+                      {!change.added && <OnTop value={onTop[change.id]} />}
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
@@ -491,33 +597,27 @@ export function ResultsTab({
                     </p>
                   )}
                 </div>
-                <button
-                  type="button"
-                  disabled={change.added}
-                  onClick={() => onAdd(change)}
-                  aria-label={
-                    change.added
-                      ? `${change.title} is in the redesign`
-                      : `Add ${change.title} to the redesign`
-                  }
-                  className={cn(
-                    "grid size-8 shrink-0 place-items-center rounded-full border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
-                    change.added
-                      ? "border-ink bg-primary text-[#14140f]"
-                      : "border-border hover:border-ink hover:bg-accent",
-                  )}
-                >
-                  {change.added ? (
-                    <CheckIcon className="size-4" />
-                  ) : (
-                    <PlusIcon className="size-4" />
-                  )}
-                </button>
+                <PickButton
+                  change={change}
+                  onAdd={onAdd}
+                  onRemove={onRemove}
+                />
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      {picks.count > 0 && (
+        <div className="-mt-3">
+          <PickedChanges
+            picks={picks}
+            trial={trial}
+            hasAgents={hasAgents}
+            onRun={onRunTrial}
+          />
+        </div>
+      )}
 
       <section aria-label="New equipment">
         <h3 className={sectionTitle}>
@@ -536,7 +636,13 @@ export function ResultsTab({
         {scouted && scouted.length > 0 && (
           <ul className="mb-2 flex flex-col gap-2">
             {scouted.map((change) => (
-              <ScoutedRow key={change.id} change={change} onAdd={onAdd} />
+              <ScoutedRow
+                key={change.id}
+                change={change}
+                onTop={onTop[change.id]}
+                onAdd={onAdd}
+                onRemove={onRemove}
+              />
             ))}
           </ul>
         )}
@@ -726,6 +832,7 @@ export function ChangesTab({
   onDrop: (id: string) => void;
   onRestore: (index: number) => void;
 }) {
+  const unit = usePlantUnit();
   const sum = changes.reduce(
     (total, { id }) =>
       total + (typeof alone[id] === "number" ? (alone[id] as number) : 0),
@@ -744,7 +851,7 @@ export function ChangesTab({
             ? "Add a suggested change, or tell the assistant below what you would change. Your twin is not touched until you apply the redesign."
             : together === null
               ? "Measuring them together…"
-              : `Together ${signedAverage(together)} parts per shift on standard rules; one by one they add up to ${signedAverage(sum)}.`}
+              : `Together ${signedAverage(together)} ${unit} per shift on standard rules; one by one they add up to ${signedAverage(sum)}.`}
         </p>
       </section>
 
@@ -843,7 +950,7 @@ export function ChangesTab({
                           ? "…"
                           : gain === "failed"
                             ? "only with the others"
-                            : `${signedAverage(gain)} parts/shift`}
+                            : `${signedAverage(gain)} ${unit}/shift`}
                       </dd>
                     </div>
                     <div>
