@@ -1,4 +1,4 @@
-import { document, project, run, world } from "./schema";
+import { document, project, projectState, run, world } from "./schema";
 
 export type {
   AcceptedChange,
@@ -12,6 +12,8 @@ export type WorldRow = typeof world.$inferSelect;
 
 export type ProjectType = typeof project.$inferInsert;
 export type ProjectRow = typeof project.$inferSelect;
+
+export type ProjectStateRow = typeof projectState.$inferSelect;
 
 export type DocumentType = typeof document.$inferInsert;
 export type DocumentRow = typeof document.$inferSelect;

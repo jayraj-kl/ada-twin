@@ -1,5 +1,11 @@
 import type { AgentSpec, DecisionRecord } from "@repo/agent";
-import type { Adjustment, FactoryGraph, Kpis, Scenario } from "@repo/sim";
+import type {
+  Adjustment,
+  FactoryGraph,
+  Kpis,
+  Playbook,
+  Scenario,
+} from "@repo/sim";
 import {
   integer,
   jsonb,
@@ -40,8 +46,12 @@ export const run = pgTable("run", {
   adjustments: jsonb("adjustments").$type<Adjustment[]>().notNull().default([]),
 
   baseline: jsonb("baseline").$type<Kpis>(),
+  // Standard rules on each day averaged; the first is `baseline`.
+  days: jsonb("days").$type<Kpis[]>(),
   kpis: jsonb("kpis").$type<Kpis>(),
   decisions: jsonb("decisions").$type<DecisionRecord[]>().notNull().default([]),
+  // The crew's way of working as fixed rules, written after the shift.
+  playbook: jsonb("playbook").$type<Playbook | null>(),
   // Cloud Storage path of the full event log, which is too large for a row.
   eventsPath: text("events_path"),
 
