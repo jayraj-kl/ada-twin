@@ -2,7 +2,9 @@
 
 **Redesign before you rebuild.** AdaTwin turns 360° photos of a factory floor into a digital twin, puts a crew of AI agents on it to run a simulated shift, and tells you which changes would make the plant ship more, before you move a single machine.
 
-[![Watch the 60-second pitch](docs/media/pitch-poster.jpg)](adatwin-pitch.mp4)
+<video src="assets/adatwin-pitch.mp4" controls width="100%"></video>
+
+**Watch the 60-second pitch:** [assets/adatwin-pitch.mp4](assets/adatwin-pitch.mp4)
 
 **Try it:** [ada-twin.web.app](https://ada-twin.web.app). Open a sample plant (boiler room, foundry, machine shop, pump hall or electrical lab) to explore without uploading anything.
 
@@ -10,26 +12,26 @@
 
 A project walks through six steps, one page each:
 
-| Step | What you do |
-| --- | --- |
-| **Capture** | Upload 360° panoramas of your floor. World Labs Marble turns them into a walkable 3D world. |
-| **Twin** | List your machines and draw how material flows between them. Gemini drafts the flow from your description and finds the machines in your photos. |
-| **Scenario** | Set the conditions to test against, in plain words: a heatwave, a rush order, half the maintenance team off sick. |
-| **Agents** | Put a crew on the floor: a planner, technicians and a supervisor, each with a personality. |
-| **Results** | Run the shift and watch the agents decide in the 3D world. Compare them with standard rules over many simulated days, then pick changes, run them on a copy of your twin, and apply the ones that work. |
-| **New plant** | See the applied changes ranked by how much they matter, with Nano Banana drawing them into photos of your plant. |
+| Step          | What you do                                                                                                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Capture**   | Upload 360° panoramas of your floor. World Labs Marble turns them into a walkable 3D world.                                                                                                             |
+| **Twin**      | List your machines and draw how material flows between them. Gemini drafts the flow from your description and finds the machines in your photos.                                                        |
+| **Scenario**  | Set the conditions to test against, in plain words: a heatwave, a rush order, half the maintenance team off sick.                                                                                       |
+| **Agents**    | Put a crew on the floor: a planner, technicians and a supervisor, each with a personality.                                                                                                              |
+| **Results**   | Run the shift and watch the agents decide in the 3D world. Compare them with standard rules over many simulated days, then pick changes, run them on a copy of your twin, and apply the ones that work. |
+| **New plant** | See the applied changes ranked by how much they matter, with Nano Banana drawing them into photos of your plant.                                                                                        |
 
 The words used here (twin, run, trial, picks, stale) are defined in [GLOSSARY.md](GLOSSARY.md).
 
 ## Architecture
 
-![AdaTwin architecture](docs/architecture/ada-twin-architecture-lean.png)
+![AdaTwin architecture](docs/architecture/images/ada-twin-architecture-lean.png)
 
 - **Frontend** (`apps/frontend`): React 19, Vite and Tailwind 4, with the 3D world rendered as Gaussian splats. Quick measurements run in the browser on the same simulation as the API. Hosted on Firebase Hosting.
 - **API** (`apps/api`): Hono on Cloud Run. It streams each shift to the page as it happens, runs the Gemini agents on Vertex AI, and keeps projects in Postgres (Cloud SQL) and their files in Cloud Storage.
 - **Simulation** (`packages/sim`): a discrete-event model of the floor: machines, buffers, breakdowns, repairs, crews and scenario effects. It is deterministic for a given seed, so a change is always measured against the same days.
 
-The full diagram is in [`docs/architecture`](docs/architecture) (draw.io sources included).
+The full diagram is in [`docs/architecture/images`](docs/architecture/images), with its draw.io sources in [`docs/architecture/drawio`](docs/architecture/drawio).
 
 ## Quick start
 
@@ -80,13 +82,13 @@ docs/           architecture diagrams and research notes
 
 ## Development
 
-| Command | What it does |
-| --- | --- |
-| `pnpm dev` | Runs the frontend and the API with reload |
-| `pnpm test` | Runs the simulation and agent tests |
-| `pnpm check-types` | Typechecks every workspace |
-| `pnpm lint` | Lints every workspace |
-| `pnpm build` | Builds every workspace |
+| Command            | What it does                              |
+| ------------------ | ----------------------------------------- |
+| `pnpm dev`         | Runs the frontend and the API with reload |
+| `pnpm test`        | Runs the simulation and agent tests       |
+| `pnpm check-types` | Typechecks every workspace                |
+| `pnpm lint`        | Lints every workspace                     |
+| `pnpm build`       | Builds every workspace                    |
 
 The agent tests use scripted model replies, so they never call Gemini.
 
