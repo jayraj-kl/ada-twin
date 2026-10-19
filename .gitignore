@@ -43,6 +43,7 @@ drizzle/
 # Local agent files
 .agents/
 .claude/
+.impeccable/
 skills-lock.json
 
 apps/video/

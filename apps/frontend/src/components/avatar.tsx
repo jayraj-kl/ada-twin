@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 export function avatarUri(seed: string) {
   return createAvatar(notionists, {
     seed,
-    backgroundColor: ["beff50", "e4f5c4", "ffe7a3", "d9e8ff", "ffd6cc"],
+    backgroundColor: ["bddd92", "e4f5c4", "ffe7a3", "d9e8ff", "ffd6cc"],
     backgroundType: ["solid"],
   }).toDataUri();
 }

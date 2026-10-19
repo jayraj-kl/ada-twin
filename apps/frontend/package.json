@@ -11,10 +11,11 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@dicebear/notionists": "9.4.3",
     "@dicebear/core": "9.4.3",
+    "@dicebear/notionists": "9.4.3",
     "@fontsource-variable/inter": "5.3.0",
     "@fontsource/geist-mono": "5.3.0",
+    "@lucasmarkes/hairline": "0.5.1",
     "@mkkellogg/gaussian-splats-3d": "0.4.7",
     "@repo/sim": "workspace:*",
     "@xyflow/react": "12.12.0",

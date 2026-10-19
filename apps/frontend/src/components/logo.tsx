@@ -13,7 +13,7 @@ export function LogoMark({ className }: { className?: string }) {
       className={cn("size-8 shrink-0 rounded-[9px] dark:ring-1 dark:ring-white/15", className)}
     >
       <rect width="32" height="32" rx="8" fill="#14140f" />
-      <rect x="7" y="7" width="12" height="12" rx="2.5" fill="#beff50" />
+      <rect x="7" y="7" width="12" height="12" rx="2.5" fill="#bddd92" />
       <rect
         x="13"
         y="13"
@@ -21,7 +21,7 @@ export function LogoMark({ className }: { className?: string }) {
         height="12"
         rx="2.5"
         fill="none"
-        stroke="#beff50"
+        stroke="#bddd92"
         strokeWidth="2"
       />
     </svg>

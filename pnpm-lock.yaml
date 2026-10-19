@@ -75,6 +75,9 @@ importers:
       '@fontsource/geist-mono':
         specifier: 5.3.0
         version: 5.3.0
+      '@lucasmarkes/hairline':
+        specifier: 0.5.1
+        version: 0.5.1(react@19.2.8)
       '@mkkellogg/gaussian-splats-3d':
         specifier: 0.4.7
         version: 0.4.7(three@0.174.0)
@@ -1580,6 +1583,14 @@ packages:
     engines: {node: '>= 10.16.0'}
     peerDependencies:
       jsep: ^0.4.0||^1.0.0
+
+  '@lucasmarkes/hairline@0.5.1':
+    resolution: {integrity: sha512-zjY3bdMC3As/+enKitZ1X+D1HjpesQiAKzG1sbCFsOrb5xIuJEoepkJTBIO4jmFh6JXOQlGGylhV71nr9ipNpQ==}
+    peerDependencies:
+      react: '>=18'
+    peerDependenciesMeta:
+      react:
+        optional: true
 
   '@mikro-orm/core@7.2.3':
     resolution: {integrity: sha512-c/OHEApYBzfUtr1VoBe5hiTDEV+tHZJifdgF4RlGrmuhuNJCsgWHxdv1ZjI0zzG79B6QdxqQ8ujgGqwLhCzOPg==}
@@ -6428,6 +6439,10 @@ snapshots:
   '@jsep-plugin/regex@1.0.4(jsep@1.4.0)':
     dependencies:
       jsep: 1.4.0
+
+  '@lucasmarkes/hairline@0.5.1(react@19.2.8)':
+    optionalDependencies:
+      react: 19.2.8
 
   '@mikro-orm/core@7.2.3': {}
 

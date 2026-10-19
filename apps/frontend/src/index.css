@@ -6,6 +6,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The landing page's display serif, Gambetta (Indian Type Foundry, Fontshare). */
+@font-face {
+  font-family: "Gambetta";
+  src: url("./assets/fonts/gambetta-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Gambetta";
+  src: url("./assets/fonts/gambetta-500i.woff2") format("woff2");
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
 /*
  * Lime signal on off-black ink over cream, after easyvouch.in. Lime is only
  * ever a fill: as text on cream it fails contrast.
@@ -18,8 +34,8 @@
   --card-foreground: #14140f;
   --popover: #ffffff;
   --popover-foreground: #14140f;
-  --primary: #beff50;
-  --primary-hover: #aee848;
+  --primary: #bddd92;
+  --primary-hover: #a9cd79;
   --primary-foreground: #14140f;
   --secondary: #ebebdf;
   --secondary-foreground: #14140f;
@@ -40,6 +56,13 @@
   --chart-3: #a86b12;
   --chart-4: #b23a3a;
   --chart-5: #8d8d80;
+  /* Hairline figures: bright, edge, mid, dim. Plates are filled with the card they sit on. */
+  --hairline-plate: var(--card);
+  --hairline-hi: #14140f;
+  --hairline-edge: #9a9a8e;
+  --hairline-mid: #c4c4b8;
+  --hairline-lo: #e2e2d6;
+  --hairline-stroke: 1;
 }
 
 .dark {
@@ -49,8 +72,8 @@
   --card-foreground: #f5f5eb;
   --popover: #191919;
   --popover-foreground: #f5f5eb;
-  --primary: #beff50;
-  --primary-hover: #cfff7a;
+  --primary: #bddd92;
+  --primary-hover: #d0e9af;
   --primary-foreground: #14140f;
   --secondary: #232323;
   --secondary-foreground: #f5f5eb;
@@ -61,7 +84,7 @@
   --destructive: #e37373;
   --border: #ffffff1f;
   --input: #ffffff29;
-  --ring: #beff50;
+  --ring: #bddd92;
   --ink: #f5f5eb;
   --success: #5cbf85;
   --warning: #e0b04d;
@@ -71,11 +94,16 @@
   --chart-3: #e0b04d;
   --chart-4: #e37373;
   --chart-5: #6b6b62;
+  --hairline-hi: #bddd92;
+  --hairline-edge: #75756b;
+  --hairline-mid: #4a4a43;
+  --hairline-lo: #2f2f2a;
 }
 
 @theme inline {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
+  --font-display: "Gambetta", ui-serif, Georgia, serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -148,6 +176,18 @@
     background: var(--primary);
     color: var(--primary-foreground);
   }
+}
+
+/*
+ * A hairline figure drawn on a lime panel: lime plates and ink strokes, whatever
+ * the theme. A panel of another lime names its own with --lime-ground.
+ */
+.hairline-on-lime {
+  --hairline-plate: var(--lime-ground, var(--primary));
+  --hairline-hi: #14140f;
+  --hairline-edge: rgb(20 20 15 / 0.62);
+  --hairline-mid: rgb(20 20 15 / 0.36);
+  --hairline-lo: rgb(20 20 15 / 0.18);
 }
 
 /* The theme toggle grows the new theme out of the button. */
@@ -236,7 +276,7 @@
     --card-foreground: #14140f;
     --popover: #ffffff;
     --popover-foreground: #14140f;
-    --primary: #beff50;
+    --primary: #bddd92;
     --primary-foreground: #14140f;
     --secondary: #ebebdf;
     --secondary-foreground: #14140f;
