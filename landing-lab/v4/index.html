@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AdaTwin · Redesign before you rebuild</title>
+<meta name="description" content="AdaTwin turns 360° photos of a factory floor into a walkable 3D twin, runs a crew of AI agents on it for a simulated shift, and ranks the changes that make the plant ship more.">
+<link rel="preload" href="fonts/archivo-900.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+<script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-left">
+      <header class="bar">
+        <a class="wordmark" href="#main" aria-label="AdaTwin, top of page">AdaTwin</a>
+        <nav aria-label="Page">
+          <a href="#steps">Six steps</a>
+          <a href="#run">A run</a>
+          <a href="#plants">Sample plants</a>
+        </nav>
+      </header>
+      <div class="hero-copy">
+        <h1 id="hero-title"><span>Redesign</span> <span>before you</span> <span>rebuild.</span></h1>
+        <p>AdaTwin turns 360° photos of your floor into a walkable 3D twin, runs a crew of AI agents on it for a simulated shift, and ranks the changes that make the plant ship more.</p>
+        <div class="actions">
+          <a class="btn" href="https://ada-twin.web.app/welcome">Start your first twin</a>
+          <a class="btn-line" href="https://ada-twin.web.app/media/adatwin-pitch.mp4">Watch the 60-second pitch</a>
+        </div>
+      </div>
+    </div>
+    <div class="hero-right">
+      <img class="hero-img" src="images/hero.png" width="1600" height="2000"
+           alt="A dithered industrial press emerging from black, lit from the right, its left side breaking into pixel voxels that drift into the dark.">
+    </div>
+    <canvas class="voxels" aria-hidden="true"></canvas>
+    <p class="wordmark-giant" aria-hidden="true">ADATWIN</p>
+  </section>
+
+  <section class="steps" id="steps" aria-labelledby="steps-title">
+    <div class="head">
+      <h2 id="steps-title">Six steps from photo to plan.</h2>
+      <p>A project moves one way, like work through a line. The upper rung is what you do. The lower rung is what AdaTwin does with it.</p>
+    </div>
+    <ol class="vsm">
+      <li>
+        <div class="box"><h3>Capture</h3></div>
+        <p class="rung up">You upload panoramas.</p>
+        <p class="rung down">World Labs Marble builds a walkable 3D world. <span class="mono">world.spz</span></p>
+      </li>
+      <li>
+        <div class="box"><h3>Twin</h3></div>
+        <p class="rung up">You name the machines.</p>
+        <p class="rung down">Gemini drafts the flow and finds the machines in your photos. <span class="mono">boiler-1…4</span></p>
+      </li>
+      <li>
+        <div class="box"><h3>Scenario</h3></div>
+        <p class="rung up">You describe a heatwave, a rush order, staff off sick.</p>
+        <p class="rung down">Gemini turns it into a shift to test. <span class="mono">8 h · 34 °C</span></p>
+      </li>
+      <li>
+        <div class="box"><h3>Agents</h3></div>
+        <p class="rung up">You pick a planner, technicians and a supervisor.</p>
+        <p class="rung down">Each agent gets a role and a personality. <span class="mono">Priya · Marek · Sam</span></p>
+      </li>
+      <li>
+        <div class="box"><h3>Results</h3></div>
+        <p class="rung up">You pick changes to try.</p>
+        <p class="rung down">The crew is compared with standard rules over many days, and picks run on a copy of the twin. <span class="mono">10 days</span></p>
+      </li>
+      <li>
+        <div class="box"><h3>New plant</h3></div>
+        <p class="rung up">You apply what works.</p>
+        <p class="rung down">Nano Banana draws the changes into photos of your plant. <span class="mono">boiler-2 · +19 · sample run</span></p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="run" id="run" aria-labelledby="run-title">
+    <div class="head">
+      <h2 id="run-title">The crew against standard rules.</h2>
+      <p>The crew works the shift once in the twin. Its playbook and standard rules, the fixed way of running the floor with no agents, then work the same shift on every seeded day, so the comparison is fair. This is one sample run of the boiler room on “Hot week, full order book”.</p>
+    </div>
+
+    <div class="ledger-grid">
+      <div class="ledger">
+        <table>
+          <caption>Batches shipped per shift <span class="mono">sample run</span></caption>
+          <thead><tr><th scope="col">Day</th><th scope="col">Standard rules</th><th scope="col">Crew’s playbook</th><th scope="col">Difference</th></tr></thead>
+          <tbody class="mono" id="ledger"></tbody>
+          <tfoot class="mono"><tr><th scope="row">Average</th><td>283.5</td><td>294.5</td><td>+11.0</td></tr></tfoot>
+        </table>
+      </div>
+      <div class="decisions">
+        <h3>What the crew decided</h3>
+        <ol>
+          <li><time class="mono">06:30</time> <span><b>Priya</b>, planner, holds new batches on the staging rack while the header queue clears.</span></li>
+          <li><time class="mono">08:00</time> <span><b>Sam</b>, supervisor, services <span class="mono">boiler-2</span> before it fails.</span></li>
+          <li><time class="mono">09:30</time> <span><b>Marek</b>, technician, sends the free crew to the feed pumps, <span class="mono">boiler-1</span>.</span></li>
+        </ol>
+        <p class="mono dim">sample run</p>
+      </div>
+    </div>
+
+    <div class="ranked">
+      <h3>Changes ranked by gain</h3>
+      <p class="dim">Extra batches per shift, paired day by day with the baseline on the same ten days. Picks run as a trial on a copy of the twin before they can be applied. <span class="mono">sample run</span></p>
+      <ol>
+        <li class="first"><span class="mono pos">1</span><span class="name">One more boiler</span><span class="mono">boiler-2 · 2 → 3</span><span class="mono gain">+19</span></li>
+        <li><span class="mono pos">2</span><span class="name">A bigger buffer at the header</span><span class="mono">header queue</span><span class="mono gain">+8</span></li>
+        <li><span class="mono pos">3</span><span class="name">Faster repairs on the feed pumps</span><span class="mono">boiler-1</span><span class="mono gain">+5</span></li>
+        <li><span class="mono pos">4</span><span class="name">An extra maintenance crew</span><span class="mono">crews 1 → 2</span><span class="mono gain">+3</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="plants" id="plants" aria-labelledby="plants-title">
+    <div class="head">
+      <h2 id="plants-title">Five plants. No upload.</h2>
+      <p>Each sample is a real capture made with World Labs Marble, with its machines already listed by ID.</p>
+    </div>
+    <dl class="plant-list">
+      <div><dt>Boiler room</dt><dd><span class="mono">boiler-1</span> Feed pumps ×2</dd><dd><span class="mono">boiler-2</span> Boilers ×2</dd><dd><span class="mono">boiler-3</span> Control panel</dd><dd><span class="mono">boiler-4</span> Gas valve trains ×2, auxiliary</dd><dd class="unit">counts batches · Marble world <span class="mono">2fef54af</span></dd></div>
+      <div><dt>Foundry</dt><dd><span class="mono">foundry-1</span> Cutting tables ×3</dd><dd><span class="mono">foundry-2</span> Welding bays ×4</dd><dd><span class="mono">foundry-3</span> Grinding station</dd><dd><span class="mono">foundry-4</span> Overhead crane, auxiliary</dd><dd class="unit">counts parts · Marble world <span class="mono">9405313c</span></dd></div>
+      <div><dt>Machine shop</dt><dd><span class="mono">machine-shop-1</span> Boring mill</dd><dd><span class="mono">machine-shop-2</span> Milling machines ×2</dd><dd><span class="mono">machine-shop-3</span> Radial drill</dd><dd><span class="mono">machine-shop-4</span> Inspection bench</dd><dd><span class="mono">machine-shop-5</span> Overhead crane, auxiliary</dd><dd class="unit">counts castings · Marble world <span class="mono">20f026ad</span></dd></div>
+      <div><dt>Pump hall</dt><dd><span class="mono">pump-hall-1</span> Main pumps ×2</dd><dd><span class="mono">pump-hall-2</span> Booster pump</dd><dd><span class="mono">pump-hall-3</span> Control panel</dd><dd class="unit">counts batches · Marble world <span class="mono">caf4c42f</span></dd></div>
+      <div><dt>Electrical lab</dt><dd><span class="mono">electrical-lab-1</span> Rewinding workbenches ×6</dd><dd><span class="mono">electrical-lab-2</span> Motor test stands ×4</dd><dd><span class="mono">electrical-lab-3</span> Instrument panel</dd><dd class="unit">counts motors · Marble world <span class="mono">12f2050a</span></dd></div>
+    </dl>
+
+    <div class="seeded">
+      <h3>Same seed, same day.</h3>
+      <p>The simulation is deterministic for a given seed. Day one replays the run’s seed and each further day takes the next, so every change is measured against exactly the same days. The voxels at the top of this page are drawn from seed 1 too, and they land in the same place on every visit.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <canvas class="steps-edge" aria-hidden="true"></canvas>
+  <div class="foot-inner">
+    <h2>Open a sample plant, or capture your own.</h2>
+    <div class="actions">
+      <a class="btn btn-on-white" href="https://ada-twin.web.app/welcome">Start your first twin</a>
+      <a class="btn-line btn-line-dark" href="https://ada-twin.web.app/media/adatwin-pitch.mp4">Watch the 60-second pitch</a>
+    </div>
+    <div class="colophon">
+      <p>AdaTwin. 3D worlds by World Labs Marble. Agents on Gemini, Vertex AI. Redrawn photos by Nano Banana.</p>
+      <p>ada-twin.web.app</p>
+    </div>
+  </div>
+</footer>
+
+<script src="main.js" defer></script>
+</body>
+</html>
