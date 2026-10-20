@@ -2,7 +2,7 @@
 
 **Redesign before you rebuild.** AdaTwin turns 360° photos of a factory floor into a digital twin, puts a crew of AI agents on it to run a simulated shift, and tells you which changes would make the plant ship more, before you move a single machine.
 
-<video src="assets/adatwin-pitch.mp4" controls width="100%"></video>
+<video src="assets/adatwin-pitch-v2-1080p60.mp4" controls width="100%"></video>
 
 **Watch the 60-second pitch:** [assets/adatwin-pitch.mp4](assets/adatwin-pitch.mp4)
 

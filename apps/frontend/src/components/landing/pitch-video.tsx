@@ -1,8 +1,13 @@
 import type { ReactNode } from "react";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import HoverPlayCard from "@/components/ui/hover-play-card";
 
-const VIDEO = "/media/adatwin-pitch.mp4";
+const VIDEO = "/media/adatwin-pitch-v2-1080p60.mp4";
 const POSTER = "/media/pitch-poster.jpg";
 
 /** The 60-second pitch in a dialog. The video loads only once the dialog opens. */
@@ -10,8 +15,13 @@ export function PitchVideo({ trigger }: { trigger: ReactNode }) {
   return (
     <Dialog>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-4xl gap-0 p-2 sm:p-3" aria-describedby={undefined}>
-        <DialogTitle className="sr-only">The AdaTwin pitch, 60 seconds</DialogTitle>
+      <DialogContent
+        className="max-w-4xl gap-0 p-2 sm:p-3"
+        aria-describedby={undefined}
+      >
+        <DialogTitle className="sr-only">
+          The AdaTwin pitch, 60 seconds
+        </DialogTitle>
         <video
           src={VIDEO}
           poster={POSTER}
