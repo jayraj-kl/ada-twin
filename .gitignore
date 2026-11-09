@@ -50,3 +50,6 @@ apps/video/
 # 240 MB 4K master of the pitch video: over GitHub's 100 MB limit, kept locally only
 apps/frontend/public/media/adatwin-pitch-v2-4k60.mp4
 assets/adatwin-pitch-v2-4k60.mp4
+
+# landing page explorations, kept locally only
+landing-lab/
