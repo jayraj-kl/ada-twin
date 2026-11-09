@@ -3,6 +3,7 @@ import { modelCatalog } from "@repo/agent";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { log, requestLogger, unhandled } from "./logging";
+import { health } from "./routes/health";
 import { modelPicker, models } from "./routes/models";
 import { plant } from "./routes/plant";
 import { projectWorld } from "./routes/project-world";
@@ -32,6 +33,7 @@ app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
 
+app.route("/health", health);
 app.route("/models", models);
 app.route("/projects", projects);
 app.route("/projects", projectWorld);

@@ -43,6 +43,7 @@ import {
   flyersFor,
 } from "@/results/floor";
 import { costKey, signed } from "@/results/format";
+import { byShownGain, shownGain } from "@/results/latest";
 import { usePlantScenario } from "@/scenario/plant";
 import { PickedChanges, type Picks, type TrialView } from "@/results/PickedChanges";
 import {
@@ -57,6 +58,7 @@ import {
   type CostEstimate,
   designChanges,
   estimateCosts,
+  applyTrial,
   forgetTrial,
   latestRun,
   latestTrial,
@@ -367,26 +369,6 @@ export default function ResultsPage() {
   // Stops a run in flight when the page is left.
   useEffect(() => () => cancel.current?.abort(), []);
 
-  const horizon = run?.horizon ?? scenario.shiftHours * 3600;
-  useEffect(() => {
-    if (!playing) return;
-    const began = performance.now();
-    const from = time;
-    const timer = setInterval(() => {
-      const next = from + ((performance.now() - began) / 1000) * speed;
-      if (next >= horizon) {
-        setTime(horizon);
-        setPlaying(false);
-      } else {
-        setTime(next);
-      }
-    }, 100);
-    return () => clearInterval(timer);
-    // `time` is only the starting point; re-running on every tick would
-    // restart the clock ten times a second.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, speed, horizon]);
-
   const liveTime = live
     ? Math.max(live.events.at(-1)?.time ?? 0, live.decisions.at(-1)?.time ?? 0)
     : 0;
@@ -396,6 +378,8 @@ export default function ResultsPage() {
   // Agent decisions so far while it runs; null when it is not running.
   const [trialProgress, setTrialProgress] = useState<number | null>(null);
   const [trialProblem, setTrialProblem] = useState("");
+  const [trialWriting, setTrialWriting] = useState(false);
+  const [trialPlaybookProblem, setTrialPlaybookProblem] = useState("");
   const trialCancel = useRef<AbortController | null>(null);
   useEffect(() => () => trialCancel.current?.abort(), []);
   const status = redesignStatus({
@@ -448,6 +432,33 @@ export default function ResultsPage() {
   // The redesign in view, once run with the picks, charts that run instead.
   const replayed =
     view === "redesign" && !live && trialCurrent ? trial!.run : run;
+  // A run with the picks, once made or loaded, is what the world replays;
+  // the toggle still shows your plant before them.
+  useEffect(() => {
+    if (trialCurrent) setView("redesign");
+  }, [trialCurrent]);
+
+  // The scrubber spans the shift being replayed.
+  const horizon = replayed?.horizon ?? scenario.shiftHours * 3600;
+  useEffect(() => {
+    if (!playing) return;
+    const began = performance.now();
+    const from = time;
+    const timer = setInterval(() => {
+      const next = from + ((performance.now() - began) / 1000) * speed;
+      if (next >= horizon) {
+        setTime(horizon);
+        setPlaying(false);
+      } else {
+        setTime(next);
+      }
+    }, 100);
+    return () => clearInterval(timer);
+    // `time` is only the starting point; re-running on every tick would
+    // restart the clock ten times a second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, speed, horizon]);
+
   const floor = useMemo(
     () =>
       live
@@ -714,6 +725,7 @@ export default function ResultsPage() {
       scenario: next.scenario,
     };
     setTrialProblem("");
+    setTrialPlaybookProblem("");
     setTrialProgress(0);
     setRunProblem("");
     setPlaying(false);
@@ -745,13 +757,19 @@ export default function ResultsPage() {
           onFinished: (finished) => {
             setTrial({ key, run: finished, crewDays: null });
             setTrialProgress(null);
+            setTrialWriting(run.agents.length > 0);
             // Replayed on the redesign, from the start of the shift.
             setLive(null);
             setView("redesign");
             setTime(0);
             setPlaying(true);
           },
-          onPlaybook: (withPlaybook) => {
+          onPlaybook: (withPlaybook, problem) => {
+            setTrialWriting(false);
+            setTrialPlaybookProblem(problem);
+            setTrial((current) =>
+              current?.key === key ? { ...current, run: withPlaybook } : current,
+            );
             if (!withPlaybook.playbook) return;
             void replayCrew({
               ...withPlaybook,
@@ -774,6 +792,7 @@ export default function ResultsPage() {
     } finally {
       if (trialCancel.current === controller) {
         setTrialProgress(null);
+        setTrialWriting(false);
         setLive((current) => (current?.trial ? null : current));
       }
     }
@@ -1028,8 +1047,24 @@ export default function ResultsPage() {
     setScenario(next.scenario);
     setKept([]);
     setHistory([]);
+    // The run with the changes is the twin's run now, so the results open on
+    // it instead of asking for the shift again.
+    const applied = trialCurrent ? trial : null;
     setTrial(null);
-    void forgetTrial(projectId).catch(() => undefined);
+    if (applied) {
+      setRun(applied.run);
+      void applyTrial<StoredRun>(projectId, applied.key)
+        .then(
+          (saved) =>
+            saved &&
+            setRun((current) =>
+              current === applied.run ? { ...current, id: saved.id } : current,
+            ),
+        )
+        .catch(() => undefined);
+    } else {
+      void forgetTrial(projectId).catch(() => undefined);
+    }
     setView("baseline");
     navigate(path("plant"));
   }
@@ -1167,6 +1202,8 @@ export default function ResultsPage() {
     outdated: status.outdated,
     blocked: status.blocked,
     problem: trialProblem,
+    writingPlaybook: trialWriting,
+    playbookProblem: trialPlaybookProblem,
   };
   const suggestionRows = suggestions?.map((change) => ({
     ...change,
@@ -1178,9 +1215,13 @@ export default function ResultsPage() {
     ...change,
     added: kept.some(({ id }) => id === change.id),
   }));
-  const unusedSuggestions = (suggestions ?? []).filter(
-    (change) => change.gain > 0 && !kept.some(({ id }) => id === change.id),
-  );
+  // Once the picks have run, each chip offers what it adds on top of them.
+  const unusedSuggestions = byShownGain(suggestions ?? [], onTop, trialCurrent)
+    .filter((change) => !kept.some(({ id }) => id === change.id))
+    .flatMap((change) => {
+      const gain = shownGain(change, onTop, trialCurrent);
+      return typeof gain === "number" && gain > 0 ? [{ ...change, gain }] : [];
+    });
 
   // Esc closes what is open over the world.
   useEffect(() => {

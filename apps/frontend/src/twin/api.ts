@@ -505,6 +505,22 @@ export async function latestTrial<Run>(
     .trial;
 }
 
+/**
+ * Keeps the run with changes as the project's latest run, once the picks
+ * `key` names are applied; null if the server kept no run for them.
+ */
+export async function applyTrial<Run>(
+  projectId: string,
+  key: string,
+): Promise<Run | null> {
+  const response = await apiFetch(`/projects/${projectId}/runs/trial/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key }),
+  });
+  return (await unwrap<{ run: Run | null }>(response)).run;
+}
+
 /** Forgets the run with changes, once they are applied. */
 export async function forgetTrial(projectId: string) {
   await apiFetch(`/projects/${projectId}/runs/trial`, { method: "DELETE" });

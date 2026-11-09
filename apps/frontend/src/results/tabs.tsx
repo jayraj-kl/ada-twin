@@ -20,13 +20,19 @@ import type { Change, Measured, MeasuredChange } from "@/twin/recommend";
 import {
   CURRENCIES,
   costKey,
-  headline,
   money,
   moneyRange,
   perPart,
   signed,
   signedAverage,
 } from "./format";
+import {
+  byShownGain,
+  headline,
+  latestOf,
+  shippedOf,
+  shownGain,
+} from "./latest";
 import { usePlantUnit } from "@/scenario/plant";
 import { PickedChanges, type Picks, type TrialView } from "./PickedChanges";
 
@@ -115,15 +121,59 @@ function PickButton({
 }
 
 /** One scouted change: the problem it answers, its gain, and its sources. */
+/**
+ * A change's gain per shift: on the plant as it is, with what it adds on top
+ * of the picks under it, or only what it adds on top once the picks have run.
+ */
+function Gain({
+  change,
+  gain,
+  onTop,
+}: {
+  change: MeasuredChange & { added: boolean };
+  /** The gain shown; undefined while it is measured. */
+  gain: number | "failed" | undefined;
+  /** What it adds on top of the picks, shown under the gain. */
+  onTop: number | "failed" | undefined;
+}) {
+  if (change.added && gain === undefined) {
+    return (
+      <span className="shrink-0 text-[11px] text-muted-foreground">
+        in your picks
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "shrink-0 font-mono text-xs font-semibold",
+        typeof gain === "number" && gain > 0
+          ? "text-success"
+          : "text-muted-foreground",
+      )}
+    >
+      {gain === undefined
+        ? "…"
+        : gain === "failed"
+          ? "not with your picks"
+          : `${signedAverage(gain)}/shift`}
+      {!change.added && <OnTop value={onTop} />}
+    </span>
+  );
+}
+
 function ScoutedRow({
   change,
   onTop,
+  withPicks,
   onAdd,
   onRemove,
 }: {
   change: MeasuredChange & { added: boolean };
   /** What it adds on top of the picked changes, once measured. */
   onTop?: number | "failed";
+  /** Whether the picks have run, so only what it adds on top shows. */
+  withPicks: boolean;
   onAdd: (change: MeasuredChange) => void;
   onRemove: (change: MeasuredChange) => void;
 }) {
@@ -134,10 +184,11 @@ function ScoutedRow({
           <span className="rounded-full bg-primary/25 px-2 py-px text-[10px] font-semibold tracking-wide uppercase">
             {originLabel(change)}
           </span>
-          <span className="shrink-0 font-mono text-xs font-semibold text-success">
-            {signedAverage(change.gain)}/shift
-            {!change.added && <OnTop value={onTop} />}
-          </span>
+          <Gain
+            change={change}
+            gain={withPicks ? onTop : change.gain}
+            onTop={withPicks ? undefined : onTop}
+          />
         </div>
         <strong className="mt-1 block text-[13px] leading-snug">
           {change.title}
@@ -150,7 +201,7 @@ function ScoutedRow({
             {change.detail}
           </p>
         )}
-        {change.range && change.range.min !== change.range.max && (
+        {!withPicks && change.range && change.range.min !== change.range.max && (
           <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
             {signed(change.range.min)} to {signed(change.range.max)} by day
           </p>
@@ -317,7 +368,12 @@ export function ResultsTab({
   onScout: () => void;
 }) {
   const unit = usePlantUnit();
-  const names = new Map(run.graph.nodes.map(({ id, name }) => [id, name]));
+  // The run with the picks can add machines the run did not have.
+  const names = new Map(
+    [...run.graph.nodes, ...(trial.after?.run.graph.nodes ?? [])].map(
+      ({ id, name }) => [id, name],
+    ),
+  );
   const { kpis } = run;
   const ruleDays = daysOf(run);
   const dayCount = ruleDays.length;
@@ -375,24 +431,45 @@ export function ResultsTab({
       : key === "rules"
         ? after.rules
         : (after.agents ?? [after.run.kpis]);
-  const shown = showRedesign && redesign ? redesign.average : kpis;
-  const stations = run.graph.nodes.filter(
+  // Everything but the "was" figures shows the latest run: the one with the
+  // picks once it is current.
+  const latest = latestOf(run, ruleDays, crewDays, after);
+  const shipped = shippedOf(latest, hasAgents);
+  const shown = latest.withPicks
+    ? latest.run.kpis
+    : showRedesign && redesign
+      ? redesign.average
+      : kpis;
+  const stations = latest.run.graph.nodes.filter(
     (node): node is Extract<FactoryNode, { kind: "station" }> =>
       node.kind === "station",
   );
-  const supports = run.graph.nodes.filter(({ kind }) => kind === "support");
+  const supports = latest.run.graph.nodes.filter(
+    ({ kind }) => kind === "support",
+  );
   // How closely the playbook reproduces the crew, on the crew's own day.
-  const replayed = crewDays?.[0]?.completed;
+  const replayed = latest.crewDays?.[0]?.completed;
+  const realDay = latest.run.kpis.completed;
   const faithful =
     replayed === undefined ||
-    Math.abs(replayed - kpis.completed) <=
-      FAITHFUL * Math.max(1, kpis.completed);
+    Math.abs(replayed - realDay) <= FAITHFUL * Math.max(1, realDay);
+  const writing = latest.withPicks ? trial.writingPlaybook : writingPlaybook;
+  const writeProblem = latest.withPicks
+    ? trial.playbookProblem
+    : playbookProblem;
+  // Once the picks have run, each suggestion shows what it adds on top of them.
+  const listed = suggestions && byShownGain(suggestions, onTop, latest.withPicks);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-lg leading-snug font-semibold text-balance">
-          {headline(run, unit)}
+          {headline({
+            ...shipped,
+            target,
+            picked: latest.withPicks ? picks.count : 0,
+            unit,
+          })}
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {dayCount > 1
@@ -523,26 +600,26 @@ export function ResultsTab({
             faithful ? "text-muted-foreground" : ui.fair,
           )}
         >
-          {writingPlaybook
+          {writing
             ? "Writing the crew's playbook to replay it on the other days…"
-            : playbookProblem
-              ? `The crew's playbook could not be written (${playbookProblem}), so their column is their one real day.`
+            : writeProblem
+              ? `The crew's playbook could not be written (${writeProblem}), so their column is their one real day.`
               : replayed === undefined
-                ? run.playbook === undefined
+                ? !latest.run.playbook
                   ? "Their column is their one real day; run the shift again to replay the crew on every day."
                   : "Replaying the crew's playbook on every day…"
                 : faithful
-                  ? `Playbook on the crew's day: ${replayed} ${unit}; the real crew shipped ${kpis.completed}.`
-                  : `Playbook on the crew's day: ${replayed} ${unit}, but the real crew shipped ${kpis.completed}, so treat their averages with care.`}
+                  ? `Playbook on the crew's day: ${replayed} ${unit}; the real crew shipped ${realDay}.`
+                  : `Playbook on the crew's day: ${replayed} ${unit}, but the real crew shipped ${realDay}, so treat their averages with care.`}
         </p>
       )}
-      {run.playbook && (
+      {latest.run.playbook && (
         <details className="-mt-3 rounded-2xl border border-border p-3">
           <summary className="cursor-pointer text-xs font-semibold">
             Crew playbook
           </summary>
           <div className="mt-2">
-            <PlaybookRules playbook={run.playbook} names={names} />
+            <PlaybookRules playbook={latest.run.playbook} names={names} />
           </div>
         </details>
       )}
@@ -552,18 +629,20 @@ export function ResultsTab({
         <h3 className={sectionTitle}>
           Suggested changes
           <span className="text-[11px] font-normal text-muted-foreground">
-            {picks.count > 0
-              ? "on its own, and on top of your picks"
-              : "each re-simulated on its own, over the same days"}
+            {latest.withPicks
+              ? "each on top of your picks, over the same days"
+              : picks.count > 0
+                ? "on its own, and on top of your picks"
+                : "each re-simulated on its own, over the same days"}
           </span>
         </h3>
-        {!suggestions ? (
+        {!listed ? (
           <p className={ui.hint}>Re-simulating each change…</p>
-        ) : suggestions.length === 0 ? (
+        ) : listed.length === 0 ? (
           <p className={ui.hint}>Nothing stands out to change.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {suggestions.map((change) => (
+            {listed.map((change) => (
               <li
                 key={change.id}
                 className="flex items-start gap-3 rounded-2xl border border-border p-3"
@@ -573,22 +652,16 @@ export function ResultsTab({
                     <strong className="text-[13px] leading-snug">
                       {change.title}
                     </strong>
-                    <span
-                      className={cn(
-                        "shrink-0 font-mono text-xs font-semibold",
-                        change.gain > 0
-                          ? "text-success"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {signedAverage(change.gain)}/shift
-                      {!change.added && <OnTop value={onTop[change.id]} />}
-                    </span>
+                    <Gain
+                      change={change}
+                      gain={shownGain(change, onTop, latest.withPicks)}
+                      onTop={latest.withPicks ? undefined : onTop[change.id]}
+                    />
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {change.detail}
                   </p>
-                  {change.range && change.range.min !== change.range.max && (
+                  {!latest.withPicks && change.range && change.range.min !== change.range.max && (
                     <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
                       {signed(change.range.min)} to {signed(change.range.max)}{" "}
                       by day
@@ -632,11 +705,12 @@ export function ResultsTab({
         )}
         {scouted && scouted.length > 0 && (
           <ul className="mb-2 flex flex-col gap-2">
-            {scouted.map((change) => (
+            {byShownGain(scouted, onTop, latest.withPicks).map((change) => (
               <ScoutedRow
                 key={change.id}
                 change={change}
                 onTop={onTop[change.id]}
+                withPicks={latest.withPicks}
                 onAdd={onAdd}
                 onRemove={onRemove}
               />
@@ -663,11 +737,15 @@ export function ResultsTab({
         <h3 className={sectionTitle}>
           Where each station&apos;s time went
           <span className="text-[11px] font-normal text-muted-foreground">
-            {showRedesign && redesign
-              ? "redesign, standard rules"
-              : hasAgents
-                ? "with your agents"
-                : "standard rules"}
+            {latest.withPicks
+              ? hasAgents
+                ? "with your picks and agents"
+                : "with your picks, standard rules"
+              : showRedesign && redesign
+                ? "redesign, standard rules"
+                : hasAgents
+                  ? "with your agents"
+                  : "standard rules"}
           </span>
         </h3>
         <ul className="flex flex-col gap-2.5">
@@ -757,7 +835,7 @@ export function ResultsTab({
                     {support.name}
                     <div className="text-[11px] text-muted-foreground">
                       needed by{" "}
-                      {(run.graph.dependencies ?? [])
+                      {(latest.run.graph.dependencies ?? [])
                         .filter(({ support: id }) => id === support.id)
                         .map(({ neededBy }) => names.get(neededBy) ?? neededBy)
                         .join(", ") || "nothing"}
@@ -771,7 +849,7 @@ export function ResultsTab({
                       {column.days
                         ? percent(
                             mean(
-                              column.days.map(
+                              (afterDays(column.key) ?? column.days).map(
                                 (day) => day.supports?.[support.id]?.down ?? 0,
                               ),
                             ),
@@ -787,13 +865,16 @@ export function ResultsTab({
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        {run.scenario.name}: {run.scenario.shiftHours}-hour shift,{" "}
+        {latest.withPicks && "With your picks. "}
+        {latest.run.scenario.name}: {latest.run.scenario.shiftHours}-hour
+        shift,{" "}
         {dayCount > 1
-          ? `seeds ${run.seed}–${run.seed + dayCount - 1}`
-          : `seed ${run.seed}`}
-        , {run.maintenanceCrews} maintenance{" "}
-        {run.maintenanceCrews === 1 ? "crew" : "crews"}, {run.decisions.length}{" "}
-        agent decisions, {run.adjustments.length} adjustments to the twin.
+          ? `seeds ${latest.run.seed}–${latest.run.seed + dayCount - 1}`
+          : `seed ${latest.run.seed}`}
+        , {latest.run.maintenanceCrews} maintenance{" "}
+        {latest.run.maintenanceCrews === 1 ? "crew" : "crews"},{" "}
+        {latest.run.decisions.length} agent decisions,{" "}
+        {latest.run.adjustments.length} adjustments to the twin.
       </p>
     </div>
   );

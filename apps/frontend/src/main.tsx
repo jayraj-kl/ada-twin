@@ -12,6 +12,7 @@ import "./index.css";
 const WelcomePage = lazy(() => import("@/pages/welcome"));
 const WorkspacePage = lazy(() => import("@/pages/workspace"));
 const ProjectLayout = lazy(() => import("@/pages/project-layout"));
+const StatusPage = lazy(() => import("@/pages/status"));
 
 // Each step loads on its own, so the 3D viewer only arrives with the steps
 // that show it.
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
   { path: "/welcome", element: <WelcomePage /> },
   { path: "/workspace", element: <WorkspacePage /> },
+  { path: "/status", element: <StatusPage /> },
   {
     path: "/p/:projectId",
     element: <ProjectLayout />,

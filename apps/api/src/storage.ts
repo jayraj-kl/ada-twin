@@ -67,6 +67,14 @@ export async function readJson<T>(path: string): Promise<T | null> {
   return file ? (JSON.parse(file.data.toString("utf8")) as T) : null;
 }
 
+/**
+ * Lists one file, to show the bucket answers. Listing is what the service
+ * account may do; reading the bucket's own settings is not.
+ */
+export async function pingStorage() {
+  await bucket().getFiles({ prefix: prefix(), maxResults: 1, autoPaginate: false });
+}
+
 export async function deleteFile(path: string) {
   await bucket().file(path).delete({ ignoreNotFound: true });
 }

@@ -24,6 +24,10 @@ export interface TrialView {
   /** Why it cannot run now, if it cannot. */
   blocked: string;
   problem: string;
+  /** Its crew's playbook is being written, after the shift. */
+  writingPlaybook: boolean;
+  /** Why its crew's playbook could not be written, if it could not. */
+  playbookProblem: string;
 }
 
 /**

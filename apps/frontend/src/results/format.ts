@@ -1,5 +1,4 @@
 import type { CostEstimate, CostRange } from "@/twin/api";
-import type { StoredRun } from "@/twin/project";
 
 export const CURRENCIES = ["USD", "EUR", "GBP", "INR"];
 
@@ -34,20 +33,3 @@ export const signed = (value: number, digits = 0) =>
 /** A change in a count averaged over days: whole when it is whole, else to one decimal. */
 export const signedAverage = (value: number) =>
   signed(value, Number.isInteger(value) ? 0 : 1);
-
-export function headline(run: StoredRun, unit = run.scenario.unit ?? "parts"): string {
-  const gained = run.kpis.completed - run.baseline.completed;
-  const target = run.scenario.targets?.throughputPerShift;
-  const crew =
-    run.agents.length === 0
-      ? "No agents ran this shift"
-      : gained > 0
-        ? `The crew shipped ${gained} more ${unit} than standard rules`
-        : gained < 0
-          ? `The crew shipped ${-gained} fewer ${unit} than standard rules`
-          : "The crew matched standard rules";
-  if (!target) return crew;
-  return run.kpis.completed >= target
-    ? `${crew}, and the target of ${target} was met`
-    : `${crew}, but the plant is ${target - run.kpis.completed} short of ${target}`;
-}

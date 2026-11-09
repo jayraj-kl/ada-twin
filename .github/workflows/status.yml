@@ -1,0 +1,47 @@
+# Checks the website, API, database and file storage every five minutes and
+# keeps the history the status page (/status) draws, as status.json on the
+# status-data branch. That branch holds a single commit, replaced on each run,
+# so its history never grows.
+name: status
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: status
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WEB_URL: https://ada-twin.web.app
+      API_URL: https://ada-twin-api-hrxqvnhhsq-bq.a.run.app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/status
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check and record
+        env:
+          REMOTE: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        run: |
+          mkdir data && cd data
+          git init -q -b status-data
+          if git fetch -q --depth 1 "$REMOTE" status-data; then
+            git checkout -q FETCH_HEAD -- status.json
+          fi
+          node ../.github/status/check.mjs status.json
+          git add status.json
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Status at $(date -u +%FT%TZ)"
+          git push -q --force "$REMOTE" HEAD:refs/heads/status-data

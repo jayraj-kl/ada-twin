@@ -389,6 +389,26 @@ projects.get("/:id/runs/trial", async (c) => {
   return c.json({ trial: (await cloudRunStore()?.trial(id)) ?? null });
 });
 
+/**
+ * Keeps the run with changes as the project's latest run, once its changes
+ * are applied to the twin, and forgets it as the run with changes. Takes
+ * { key } naming the applied picks and answers { run } with its new id, or
+ * null when no run was kept for those picks.
+ */
+projects.post("/:id/runs/trial/apply", async (c) => {
+  const id = projectId(c.req.param("id"));
+  const { key } = asObject(await c.req.json().catch(() => null));
+  if (typeof key !== "string" || !key) fail(400, "Expected { key } naming the applied picks");
+  const store = cloudRunStore();
+  const kept = await store?.trial(id);
+  if (!store || !kept || kept.key !== key) return c.json({ run: null });
+  const { id: _, ...run } = kept.run;
+  const latest = await store.keep(id, { kind: "latest" }, run);
+  if (run.playbook) await latest.addPlaybook(run.playbook);
+  await store.forgetTrial(id);
+  return c.json({ run: { ...run, id: latest.id } });
+});
+
 /** Forgets the run with changes, once they are applied. */
 projects.delete("/:id/runs/trial", async (c) => {
   const id = projectId(c.req.param("id"));
