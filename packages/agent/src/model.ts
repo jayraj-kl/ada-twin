@@ -11,6 +11,39 @@ export const DEFAULT_MODEL = "gemini-3.5-flash";
 export interface ModelChoice {
   text?: string;
   image?: string;
+  /** The language the page shows, which prose for people is written in. */
+  language?: "hi";
+}
+
+/**
+ * Tasks whose words people read: written in the page's language. Reading
+ * documents, searching the web and drawing stay in English, so quotes match
+ * their source and prompts work as tested.
+ */
+const PROSE_TASKS = new Set([
+  "advise-on-cost",
+  "explain-changes",
+  "describe-scenario",
+  "suggest-scenarios",
+  "design-changes",
+  "draft-flow",
+  "revise-flow",
+  "estimate-costs",
+  // The agents on the floor, who give a reason for each decision.
+  "floor-decision",
+  "write-playbook",
+  "scout-equipment",
+]);
+
+const HINDI =
+  "Write every sentence, reply, reason and label meant for the reader in Hindi, in Devanagari script, plainly. Keep the answer's structure, JSON keys, ids and enum values exactly as asked, in English. Write numbers with the digits 0-9, and copy figures, currency signs, units, machine and document names and quoted passages exactly as given.";
+
+/** A task's instruction with the language rule the request needs, if any. */
+export function inLanguage(task: string | undefined, instruction?: string) {
+  if (choice.getStore()?.language !== "hi" || !task || !PROSE_TASKS.has(task)) {
+    return instruction;
+  }
+  return instruction ? `${instruction}\n\n${HINDI}` : HINDI;
 }
 
 const choice = new AsyncLocalStorage<ModelChoice>();
@@ -130,7 +163,7 @@ export function createGeminiModel(options: { model?: string } = {}): AskModel {
           },
         ],
         config: {
-          systemInstruction: instruction,
+          systemInstruction: inLanguage(task, instruction),
           // Gemini cannot combine forced-JSON output with web search, so with
           // search on the JSON is asked for in the prompt and parsed leniently.
           ...(search

@@ -7,6 +7,7 @@ import {
   type Role,
 } from "@/twin/project";
 
+import { t } from "@/lib/i18n";
 // How far from a station an agent walks round it, or stands to work on it.
 const CIRCLE_RADIUS = 0.3;
 const STAND_OFF = 0.2;
@@ -27,7 +28,7 @@ export const STATUS_WORD: Partial<Record<StationStatus, string>> = {
   down: "down",
   repairing: "under repair",
   preventive: "being serviced",
-  stopped: "stopped, needs auxiliary",
+  stopped: t("stopped, needs auxiliary"),
 };
 
 /** The colour class of `ui` for each status. */

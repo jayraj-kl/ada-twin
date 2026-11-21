@@ -1,34 +1,38 @@
 import type { Scenario } from "@repo/sim";
 import type { ScenarioAnswer, ScenarioField } from "@/twin/api";
 
+import { t } from "@/lib/i18n";
 /** How the form labels each setting, and how it shows a value. */
 export const FIELD_LABELS: Record<
   ScenarioField,
   { label: string; show: (value: number | string, unit: string) => string }
 > = {
-  name: { label: "Name", show: String },
-  shiftHours: { label: "Shift length", show: (v) => `${v} h` },
-  demandPerShift: { label: "Demand", show: (v, unit) => `${v} ${unit} per shift` },
-  ambientTempC: { label: "Ambient temperature", show: (v) => `${v} °C` },
+  name: { label: t("Name"), show: String },
+  shiftHours: { label: t("Shift length"), show: (v) => `${v} h` },
+  demandPerShift: {
+    label: t("Demand"),
+    show: (v, unit) => t("{0} {1} per shift", { 0: v, 1: unit }),
+  },
+  ambientTempC: { label: t("Ambient temperature"), show: (v) => `${v} °C` },
   supplyDisruption: {
-    label: "Supply disrupted",
+    label: t("Supply disrupted"),
     show: (v) => `${Math.round(Number(v) * 100)}%`,
   },
   absenteeism: {
-    label: "Maintenance staff absent",
+    label: t("Maintenance staff absent"),
     show: (v) => `${Math.round(Number(v) * 100)}%`,
   },
-  maintenanceCrews: { label: "Maintenance crews", show: (v) => `${v}` },
+  maintenanceCrews: { label: t("Maintenance crews"), show: (v) => `${v}` },
   "targets.throughputPerShift": {
-    label: "Ship at least",
+    label: t("Ship at least"),
     show: (v, unit) => `${v} ${unit}`,
   },
   "targets.maxAverageWip": {
-    label: "Work in progress under",
+    label: t("Work in progress under"),
     show: (v, unit) => `${v} ${unit}`,
   },
   "targets.maxDownShare": {
-    label: "Any station down less than",
+    label: t("Any station down less than"),
     show: (v) => `${Math.round(Number(v) * 100)}%`,
   },
 };

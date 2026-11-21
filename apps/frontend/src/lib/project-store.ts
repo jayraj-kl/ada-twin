@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { API } from "./models";
 import { ServerError, server } from "./server";
 
+import { t } from "@/lib/i18n";
 /**
  * The project fields saved on the server, by the name pages store them under
  * (the `*_KEY` constants in twin/flow.ts and twin/project.ts). They are the
@@ -32,6 +33,9 @@ export const STATE_KEYS = new Set([
   "twin-days",
   "twin-plant-count",
   "twin-sample-world",
+  "twin-demo-pack",
+  "twin-cost-rates",
+  "twin-cost-brief",
   "twin-scenario-suggestions",
 ]);
 
@@ -221,7 +225,8 @@ export async function flush(id: string, keepalive = false): Promise<void> {
       if (!response.ok) {
         const answer = await response.json().catch(() => null);
         throw new ServerError(
-          answer?.error ?? `The API answered HTTP ${response.status}`,
+          answer?.error ??
+            t("The API answered HTTP {0}", { 0: response.status }),
           response.status,
         );
       }
@@ -261,12 +266,18 @@ if (typeof window !== "undefined") {
 
 /** How far a project has loaded. */
 export function useLoadStatus(id: string): LoadStatus {
-  return useSyncExternalStore(subscribe, () => entries.get(id)?.load ?? "loading");
+  return useSyncExternalStore(
+    subscribe,
+    () => entries.get(id)?.load ?? "loading",
+  );
 }
 
 /** Whether a project's changes have reached the server. */
 export function useSaveStatus(id: string): SaveStatus {
-  return useSyncExternalStore(subscribe, () => entries.get(id)?.save ?? "saved");
+  return useSyncExternalStore(
+    subscribe,
+    () => entries.get(id)?.save ?? "saved",
+  );
 }
 
 /** A field of a loaded project, re-rendering when it changes. */

@@ -1,0 +1,314 @@
+{
+  "generatedAt": "2026-11-20T22:18:02.609Z",
+  "scenario": {
+    "name": "Hot week, full order book",
+    "shiftHours": 8,
+    "demandPerShift": 340,
+    "ambientTempC": 34,
+    "maintenanceCrews": 1,
+    "targets": {
+      "throughputPerShift": 300,
+      "maxDownShare": 0.1
+    },
+    "days": 30,
+    "seeds": "1-30",
+    "plant": [
+      "Feed pumps",
+      "Boilers",
+      "Control panel check"
+    ]
+  },
+  "outcomes": {
+    "tag": "simulated",
+    "standardRules": {
+      "partsShipped": {
+        "mean": 242.8,
+        "min": 186,
+        "max": 297
+      },
+      "averageWip": {
+        "mean": 14.3,
+        "min": 10.5,
+        "max": 16.8
+      },
+      "boilersDownPct": {
+        "mean": 20.3,
+        "min": 8.4,
+        "max": 38.5
+      },
+      "partsScrapped": {
+        "mean": 5.1,
+        "min": 1,
+        "max": 11
+      }
+    },
+    "aiCrew": {
+      "partsShipped": {
+        "mean": 235.3,
+        "min": 171,
+        "max": 286
+      },
+      "averageWip": {
+        "mean": 15.9,
+        "min": 13.9,
+        "max": 17.9
+      },
+      "boilersDownPct": {
+        "mean": 23.2,
+        "min": 8.4,
+        "max": 35.7
+      },
+      "partsScrapped": {
+        "mean": 6.3,
+        "min": 1,
+        "max": 12
+      }
+    },
+    "aiCrewPlusTopFixes": {
+      "partsShipped": {
+        "mean": 315.6,
+        "min": 252,
+        "max": 354
+      },
+      "averageWip": {
+        "mean": 13.1,
+        "min": 10.7,
+        "max": 15.7
+      },
+      "boilersDownPct": {
+        "mean": 9.4,
+        "min": 2.8,
+        "max": 27.8
+      },
+      "partsScrapped": {
+        "mean": 6.6,
+        "min": 2,
+        "max": 13
+      }
+    },
+    "topFixes": [
+      "Add one more unit to Boilers",
+      "Halve repair time at Boilers"
+    ],
+    "playbookFidelityPct": 96
+  },
+  "fixes": {
+    "tag": "simulated",
+    "items": [
+      {
+        "id": "add-unit",
+        "title": "Add one more unit to Boilers",
+        "detail": "Boilers is the bottleneck on an average day.",
+        "diffs": [
+          {
+            "type": "add-units",
+            "station": "boilers",
+            "count": 1
+          }
+        ],
+        "extraCrews": 0,
+        "gain": {
+          "mean": 34.9,
+          "min": -78,
+          "max": 111
+        }
+      },
+      {
+        "id": "halve-repair",
+        "title": "Halve repair time at Boilers",
+        "detail": "Boilers is down most; spares kept at the station halve repairs.",
+        "diffs": [
+          {
+            "type": "set-param",
+            "node": "boilers",
+            "param": "mttr",
+            "value": 750
+          }
+        ],
+        "extraCrews": 0,
+        "gain": {
+          "mean": 33,
+          "min": -27,
+          "max": 95
+        }
+      },
+      {
+        "id": "second-crew",
+        "title": "Add a maintenance crew",
+        "detail": "A second crew for when breakdowns queue.",
+        "diffs": [],
+        "extraCrews": 1,
+        "gain": {
+          "mean": 19.1,
+          "min": -39,
+          "max": 80
+        }
+      },
+      {
+        "id": "bigger-buffer",
+        "title": "Double Header queue to 12 parts",
+        "detail": "Header queue feeds the bottleneck.",
+        "diffs": [
+          {
+            "type": "resize-buffer",
+            "buffer": "header",
+            "capacity": 12
+          }
+        ],
+        "extraCrews": 0,
+        "gain": {
+          "mean": -0.8,
+          "min": -71,
+          "max": 75
+        }
+      }
+    ]
+  },
+  "costs": {
+    "tag": "estimated",
+    "lookupMs": 66737,
+    "estimates": [
+      {
+        "id": "add-unit",
+        "currency": "USD",
+        "oneOff": {
+          "low": 25000,
+          "high": 700000
+        },
+        "yearly": {
+          "low": 25000,
+          "high": 60000
+        },
+        "basis": "Assumes adding a light-commercial to medium-industrial steam boiler system (150 to 2,000 HP) including delivery, installation, piping, and turnkey commissioning. Yearly operating costs cover fuel, make-up water, water-treatment chemicals, and routine inspections.",
+        "sources": [
+          {
+            "url": "https://makeboiler.com/",
+            "title": "Industrial and Commercial Steam Boiler Installation Cost Guide"
+          },
+          {
+            "url": "https://coalbiomassboiler.com/",
+            "title": "Industrial Boiler Replacement and Operating Cost Breakdown"
+          }
+        ]
+      },
+      {
+        "id": "halve-repair",
+        "currency": "USD",
+        "oneOff": {
+          "low": 5000,
+          "high": 50000
+        },
+        "yearly": null,
+        "basis": "Assumes a one-time capital investment to stock a critical spare parts kit (such as gaskets, valves, burner parts, and control sensors) at the boiler station. Ongoing replenishment is assumed to be handled under the existing maintenance budget.",
+        "sources": [
+          {
+            "url": "https://boiler-pressureparts.com/",
+            "title": "Boyu Industrial Boiler Components and Spare Parts Price List"
+          },
+          {
+            "url": "https://powerhouse-combustion.com/",
+            "title": "23 Spare Boiler Parts Every Boiler Room Should Have On Hand"
+          }
+        ]
+      },
+      {
+        "id": "second-crew",
+        "currency": "USD",
+        "oneOff": {
+          "low": 10000,
+          "high": 50000
+        },
+        "yearly": {
+          "low": 130000,
+          "high": 210000
+        },
+        "basis": "Assumes hiring a second 2-person crew of industrial machinery mechanics at U.S. median wages with fully loaded benefits (adding approximately 50% on top of base pay). One-off costs cover recruitment, training, and standard hand tooling.",
+        "sources": [
+          {
+            "url": "https://www.bls.gov/",
+            "title": "U.S. Bureau of Labor Statistics Occupational Outlook Handbook"
+          },
+          {
+            "url": "https://reliamag.com/",
+            "title": "What Does It Cost to Train a Maintenance Technician?"
+          }
+        ]
+      },
+      {
+        "id": "bigger-buffer",
+        "currency": "USD",
+        "oneOff": {
+          "low": 1000,
+          "high": 6000
+        },
+        "yearly": null,
+        "basis": "Assumes expanding the queue to 12 parts using either a 10-to-20 foot gravity roller conveyor or a 12-position gravity-flow pallet racking system. Passive gravity systems have no yearly power requirements and negligible maintenance costs.",
+        "sources": [
+          {
+            "url": "https://warehousefieldbook.com/",
+            "title": "Roller Conveyor and Pallet Flow Racking Cost Guide"
+          },
+          {
+            "url": "https://fivewestfinancial.com/",
+            "title": "How Much Does a Conveyor System Cost?"
+          }
+        ]
+      }
+    ]
+  },
+  "simulator": {
+    "tag": "measured",
+    "days": 30,
+    "totalMs": 76,
+    "perShiftMs": 2.53,
+    "timesFasterThanRealTime": 11368421
+  },
+  "agentRun": {
+    "tag": "measured",
+    "standardDaysOnServerMs": 1679,
+    "shiftDoneMs": 111323,
+    "playbookWrittenMs": 122334,
+    "decisions": 30,
+    "fallbacks": 0,
+    "answeredByAgentsPct": 100,
+    "realDay": {
+      "tag": "simulated",
+      "partsShipped": 229,
+      "averageWip": 16.3,
+      "boilersDownPct": 24.9,
+      "partsScrapped": 3
+    },
+    "playbook": {
+      "repairOrder": [],
+      "release": {
+        "intake": {
+          "fastBelowWip": 999
+        }
+      },
+      "serviceEveryHours": {
+        "boilers": 3.5,
+        "panel": 3.5
+      },
+      "notes": "The crew aggressively boosted production by setting the batch intake release rate to 120% early on and maintaining it for the entire shift to close the shipping deficit. They performed preventive maintenance on both the boilers and control panel check after approximately 3.5 hours of run time, provided a maintenance crew was available. No preventive maintenance was performed on the feed pumps, which were left to run until they failed."
+    },
+    "playbookProblem": null,
+    "standardSameDay": 256
+  },
+  "latency": {
+    "tag": "measured",
+    "from": "the developer's machine to Cloud Run in africa-south1",
+    "healthCheck": {
+      "p50Ms": 522,
+      "p90Ms": 1019
+    },
+    "databaseRead": {
+      "p50Ms": 1081,
+      "p90Ms": 2283
+    }
+  },
+  "tests": {
+    "tag": "measured",
+    "passed": 150,
+    "total": 150
+  }
+}

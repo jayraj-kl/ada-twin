@@ -5,6 +5,7 @@ import { signOut, useProfile } from "@/lib/profile";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./avatar";
 import { Logo } from "./logo";
+import { LanguageButton } from "./language-button";
 import { ThemeButton } from "./theme-button";
 import {
   DropdownMenu,
@@ -15,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
+import { t } from "@/lib/i18n";
 export function TopBar({
   logoTo,
   children,
@@ -43,6 +45,7 @@ export function TopBar({
         <div className="flex min-w-0 flex-1 items-center">{children}</div>
         <div className="flex shrink-0 items-center gap-2">
           {end}
+          <LanguageButton />
           <ThemeButton />
         </div>
       </div>
@@ -58,7 +61,7 @@ export function ProfileMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger
         className="rounded-full outline-none transition-transform hover:scale-105 focus-visible:ring-[3px] focus-visible:ring-ring/40"
-        aria-label="Your profile"
+        aria-label={t("Your profile")}
       >
         <Avatar seed={profile.avatarSeed} className="size-10" />
       </DropdownMenuTrigger>
@@ -68,13 +71,13 @@ export function ProfileMenu() {
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{profile.name}</div>
             <div className="text-xs font-normal text-muted-foreground">
-              Saved in this browser
+              {t("Saved in this browser")}
             </div>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => navigate("/welcome?edit=1")}>
-          <PencilIcon /> Edit profile
+          <PencilIcon /> {t("Edit profile")}
         </DropdownMenuItem>
         <DropdownMenuItem
           destructive
@@ -83,7 +86,7 @@ export function ProfileMenu() {
             navigate("/welcome");
           }}
         >
-          <LogOutIcon /> Sign out
+          <LogOutIcon /> {t("Sign out")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

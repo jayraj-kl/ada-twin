@@ -20,6 +20,7 @@ import { type OverlayItem, ProjectionOverlay } from "./ProjectionOverlay";
 import { useRailCamera } from "./useRailCamera";
 import { useSplatViewer } from "./useSplatViewer";
 
+import { t } from "@/lib/i18n";
 // A press that moves further than this is a look-around drag, not a click.
 const CLICK_SLOP_PX = 4;
 
@@ -169,7 +170,9 @@ export function WorldView({
             pointerEvents: "none",
           }}
         >
-          {error ? `Could not load the world: ${error}` : "Loading the world…"}
+          {error
+            ? t("Could not load the world: {0}", { 0: error })
+            : t("Loading the world…")}
         </div>
       )}
     </div>

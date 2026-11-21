@@ -35,7 +35,22 @@ export {
   type ViewLayout,
 } from "./panorama-views";
 
-export { extractFromDocuments } from "./agents/document-reader";
+export {
+  DOCUMENT_KINDS,
+  extractFromDocuments,
+  type DocumentFindings,
+  type MachineDocument,
+} from "./agents/document-reader";
+
+export {
+  pdfPages,
+  statesValue,
+  verifyClaim,
+  type CitedClaim,
+  type ClaimedValue,
+  type ReadDocument,
+  type Verdict,
+} from "./verify-citation";
 
 export { researchOnWeb } from "./agents/web-researcher";
 
@@ -62,6 +77,7 @@ export { describeMachine, needsInfo, type Machine } from "./machines";
 export {
   DEFAULT_MODEL,
   createGeminiModel,
+  textModelId,
   withModelChoice,
   type ModelChoice,
   type AskModel,
@@ -124,3 +140,7 @@ export {
   type ImageModelOption,
   type ModelOption,
 } from "./catalog";
+
+export { readCostRates, type ReadRate } from "./agents/cost-reader";
+
+export { adviseOnCost } from "./agents/cost-advisor";

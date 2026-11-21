@@ -1,5 +1,11 @@
-import { type Capacity, type FactoryGraph, type Scenario, shiftCapacity } from "@repo/sim";
+import {
+  type Capacity,
+  type FactoryGraph,
+  type Scenario,
+  shiftCapacity,
+} from "@repo/sim";
 import { useMemo } from "react";
+import { t } from "@/lib/i18n";
 import { useStateValue } from "@/lib/project-store";
 import { useProjectId, useProjects } from "@/lib/projects";
 import { DEFAULT_SCENARIO, SCENARIO_KEY, useStored } from "@/twin/project";
@@ -14,6 +20,14 @@ export function usePlantUnit(): string {
   const project = useProjects().find(({ id }) => id === projectId);
   const slug = useStateValue(projectId, SAMPLE_WORLD_KEY);
   return project?.sample ? sampleOf(slug).unit : DEFAULT_UNIT;
+}
+
+/**
+ * The plant's unit as the page shows it, in its language. Only for display:
+ * what is saved and sent to the agents keeps `usePlantUnit`.
+ */
+export function usePlantUnitLabel(): string {
+  return t(usePlantUnit());
 }
 
 /** Rounds to a figure a person would pick: 7, 45, 210, 1 300. */

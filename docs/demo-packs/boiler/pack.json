@@ -1,0 +1,203 @@
+{
+  "world": "boiler",
+  "title": "Boiler room",
+  "plant": "Riverside Works",
+  "machines": [
+    {
+      "id": "boiler-1",
+      "name": "Feed pumps",
+      "count": 2
+    },
+    {
+      "id": "boiler-2",
+      "name": "Boilers",
+      "count": 2
+    },
+    {
+      "id": "boiler-3",
+      "name": "Control panel",
+      "count": 1
+    },
+    {
+      "id": "boiler-4",
+      "name": "Gas valve trains",
+      "count": 2,
+      "auxiliary": true
+    }
+  ],
+  "window": {
+    "start": "2026-10-05",
+    "weeks": 4,
+    "shiftStart": 6,
+    "shiftHours": 8
+  },
+  "documents": [
+    {
+      "file": "overview.md",
+      "title": "Plant overview",
+      "kind": "overview",
+      "demo": true
+    },
+    {
+      "file": "cost-sheet.md",
+      "title": "Cost sheet",
+      "kind": "plant-record",
+      "demo": true,
+      "costs": true
+    },
+    {
+      "file": "feed-pumps-log.md",
+      "machine": "boiler-1",
+      "title": "Feed pumps: stoppage log",
+      "kind": "plant-record",
+      "demo": true
+    },
+    {
+      "file": "feed-pumps-datasheet.md",
+      "machine": "boiler-1",
+      "title": "Feed pumps: datasheet",
+      "kind": "datasheet",
+      "demo": true
+    },
+    {
+      "file": "feed-pumps-reference.md",
+      "machine": "boiler-1",
+      "title": "Feed pumps: reference sheet",
+      "kind": "reference",
+      "demo": false
+    },
+    {
+      "file": "boilers-log.md",
+      "machine": "boiler-2",
+      "title": "Boilers: stoppage log",
+      "kind": "plant-record",
+      "demo": true
+    },
+    {
+      "file": "boilers-datasheet.md",
+      "machine": "boiler-2",
+      "title": "Boilers: datasheet",
+      "kind": "datasheet",
+      "demo": true
+    },
+    {
+      "file": "boilers-reference.md",
+      "machine": "boiler-2",
+      "title": "Boilers: reference sheet",
+      "kind": "reference",
+      "demo": false
+    },
+    {
+      "file": "control-panel-log.md",
+      "machine": "boiler-3",
+      "title": "Control panel: stoppage log",
+      "kind": "plant-record",
+      "demo": true
+    },
+    {
+      "file": "control-panel-datasheet.md",
+      "machine": "boiler-3",
+      "title": "Control panel: datasheet",
+      "kind": "datasheet",
+      "demo": true
+    },
+    {
+      "file": "control-panel-reference.md",
+      "machine": "boiler-3",
+      "title": "Control panel: reference sheet",
+      "kind": "reference",
+      "demo": false
+    },
+    {
+      "file": "gas-valve-trains-log.md",
+      "machine": "boiler-4",
+      "title": "Gas valve trains: stoppage log",
+      "kind": "plant-record",
+      "demo": true
+    },
+    {
+      "file": "gas-valve-trains-reference.md",
+      "machine": "boiler-4",
+      "title": "Gas valve trains: reference sheet",
+      "kind": "reference",
+      "demo": false
+    }
+  ],
+  "logs": [
+    {
+      "file": "feed-pumps-log.md",
+      "machine": "Feed pumps",
+      "units": [
+        "FP-1",
+        "FP-2"
+      ],
+      "mtbfHours": 6,
+      "mttrMinutes": 25,
+      "seed": 11,
+      "faults": [
+        "Mechanical seal leak",
+        "Suction strainer blocked",
+        "Motor overload trip",
+        "Bearing temperature high",
+        "Discharge check valve sticking",
+        "Low suction pressure trip"
+      ]
+    },
+    {
+      "file": "boilers-log.md",
+      "machine": "Boilers",
+      "units": [
+        "B-1",
+        "B-2"
+      ],
+      "mtbfHours": 3.5,
+      "mttrMinutes": 45,
+      "seed": 23,
+      "faults": [
+        "Flame failure lockout",
+        "Low water level trip",
+        "Igniter fouled",
+        "Flue gas temperature high",
+        "Feedwater control valve hunting",
+        "Burner air damper stuck"
+      ]
+    },
+    {
+      "file": "control-panel-log.md",
+      "machine": "Control panel",
+      "units": [
+        "CP-1"
+      ],
+      "mtbfHours": 5,
+      "mttrMinutes": 30,
+      "seed": 37,
+      "faults": [
+        "PLC watchdog reset",
+        "Level transmitter signal lost",
+        "HMI frozen",
+        "24 V supply fault",
+        "Release printer jammed",
+        "Analyser calibration drift"
+      ]
+    },
+    {
+      "file": "gas-valve-trains-log.md",
+      "machine": "Gas valve trains",
+      "units": [
+        "VT-1",
+        "VT-2"
+      ],
+      "mtbfHours": 8,
+      "mttrMinutes": 40,
+      "seed": 41,
+      "faults": [
+        "Low gas pressure switch trip",
+        "Shut-off valve failed to open",
+        "Regulator lock-up",
+        "Valve proving test failed",
+        "Solenoid coil fault",
+        "Gas leak at flange"
+      ]
+    }
+  ]
+}

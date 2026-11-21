@@ -22,7 +22,7 @@ app.use(requestLogger);
 app.use(
   cors({
     origin: origins,
-    allowHeaders: ["Content-Type", "X-Request-Id", "X-Text-Model", "X-Image-Model"],
+    allowHeaders: ["Content-Type", "X-Request-Id", "X-Text-Model", "X-Image-Model", "X-Language"],
     exposeHeaders: ["X-Request-Id"],
   }),
 );

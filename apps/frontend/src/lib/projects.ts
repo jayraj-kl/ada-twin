@@ -8,6 +8,7 @@ import {
 import { server } from "./server";
 import { readJson, removeKey, writeJson } from "./storage";
 
+import { language, t } from "@/lib/i18n";
 // Projects are saved on the server and anonymous: this browser keeps the ids
 // of its own projects, with their names and times as last seen, so the list
 // shows at once and then refreshes. Projects from before the server, under
@@ -16,19 +17,37 @@ import { readJson, removeKey, writeJson } from "./storage";
 const LIST_KEY = "ada-twin:server-projects";
 
 export const STEPS = [
-  { slug: "capture", label: "Capture", blurb: "Upload 360° panoramas of your floor" },
-  { slug: "twin", label: "Twin", blurb: "List machines and draw the material flow" },
-  { slug: "scenario", label: "Scenario", blurb: "Set the conditions to test against" },
-  { slug: "agents", label: "Agents", blurb: "Put a crew of AI agents on the floor" },
+  {
+    slug: "capture",
+    label: t("Capture"),
+    blurb: t("Upload 360° panoramas of your floor"),
+  },
+  {
+    slug: "twin",
+    label: t("Twin"),
+    blurb: t("List machines and draw the material flow"),
+  },
+  {
+    slug: "scenario",
+    label: t("Scenario"),
+    blurb: t("Set the conditions to test against"),
+  },
+  {
+    slug: "agents",
+    label: t("Agents"),
+    blurb: t("Put a crew of AI agents on the floor"),
+  },
   {
     slug: "results",
-    label: "Results",
-    blurb: "Run the shift, see what to fix, and redesign the plant",
+    label: t("Results"),
+    blurb: t("Run the shift, see what to fix, and redesign the plant"),
   },
   {
     slug: "plant",
-    label: "New plant",
-    blurb: "The applied changes, most critical first, drawn into your photos",
+    label: t("New plant"),
+    blurb: t(
+      "The applied changes, most critical first, drawn into your photos",
+    ),
   },
 ] as const;
 
@@ -220,15 +239,18 @@ export function useProjectPath() {
 
 export function timeAgo(then: number) {
   const seconds = Math.round((Date.now() - then) / 1000);
-  if (seconds < 45) return "just now";
+  if (seconds < 45) return t("just now");
   const units: [number, string][] = [
     [60, "minute"],
     [3600, "hour"],
     [86400, "day"],
     [604800, "week"],
   ];
-  const format = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  const format = new Intl.RelativeTimeFormat(language, { numeric: "auto" });
   let chosen = units[0]!;
   for (const unit of units) if (seconds >= unit[0]) chosen = unit;
-  return format.format(-Math.round(seconds / chosen[0]), chosen[1] as Intl.RelativeTimeFormatUnit);
+  return format.format(
+    -Math.round(seconds / chosen[0]),
+    chosen[1] as Intl.RelativeTimeFormatUnit,
+  );
 }

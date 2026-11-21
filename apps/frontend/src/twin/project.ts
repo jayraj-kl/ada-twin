@@ -1,5 +1,7 @@
 import {
   type Adjustment,
+  type Baseline,
+  type DocumentKind,
   type FactoryGraph,
   type FactoryNode,
   type Kpis,
@@ -22,6 +24,7 @@ import {
 import { projectKey, useProjectId } from "@/lib/projects";
 import { EXTRA_DEFAULTS, type Flow } from "./flow";
 
+import { t } from "@/lib/i18n";
 // A project's values, by the name each is stored under. The core of the
 // project (SERVER_KEYS in lib/project-store.ts) is saved on the server; the
 // rest still lives in this browser, under the project's own keys.
@@ -52,12 +55,28 @@ export const CAMERA_HEIGHT_M = 1.65;
 export type Point = [number, number, number];
 
 /** A machine as the twin step saves it. */
+/** A document kept with the project under one of its machines. */
+export interface KeptDocument {
+  id: string;
+  name: string;
+  /** What it is: the plant's own record, a datasheet, a reference sheet. */
+  kind?: DocumentKind;
+  /** Part of a demo world's pack: made up for a fictional plant. */
+  demo?: boolean;
+  /** Its title in a demo pack. */
+  title?: string;
+}
+
 export interface SavedMachine {
   id: string;
   name: string;
   count?: number;
   pins?: Point[];
   params?: Partial<Record<StationParamKey, Param>>;
+  /** Published class ranges for its figures, read from a reference sheet. */
+  baselines?: Partial<Record<StationParamKey, Baseline>>;
+  /** Documents kept with the project for this machine. */
+  kept?: KeptDocument[];
   /**
    * Support equipment, such as a control cabinet: parts never pass through
    * it, but what needs it stops when it fails.
@@ -77,35 +96,35 @@ export interface SavedMachine {
 export const STATION_PARAMS = [
   {
     key: "cycleTime",
-    label: "Cycle time",
+    label: t("Cycle time"),
     unit: "s",
     fallback: 120,
     shown: { suffix: "s", per: 1 },
   },
   {
     key: "cycleTimeVariation",
-    label: "Cycle time variation",
+    label: t("Cycle time variation"),
     unit: "share",
     fallback: 0.25,
     shown: { suffix: "%", per: 0.01 },
   },
   {
     key: "mtbf",
-    label: "Time between failures",
+    label: t("Time between failures"),
     unit: "s",
     fallback: 4 * 3600,
     shown: { suffix: "h", per: 3600 },
   },
   {
     key: "mttr",
-    label: "Time to repair",
+    label: t("Time to repair"),
     unit: "s",
     fallback: 20 * 60,
     shown: { suffix: "min", per: 60 },
   },
   {
     key: "scrapRate",
-    label: "Scrap rate",
+    label: t("Scrap rate"),
     unit: "share",
     fallback: 0.01,
     shown: { suffix: "%", per: 0.01 },
@@ -177,7 +196,7 @@ export function buildGraph(machines: SavedMachine[], flow: Flow): FactoryGraph {
 }
 
 export const DEFAULT_SCENARIO: Scenario = {
-  name: "Hot week, full order book",
+  name: t("Hot week, full order book"),
   shiftHours: 8,
   demandPerShift: 340,
   ambientTempC: 34,
@@ -205,25 +224,25 @@ export const ROLE_INFO: Record<
 > = {
   planner: {
     title: "Production planner",
-    decides: "How fast new work is released into the line.",
+    decides: t("How fast new work is released into the line."),
     colour: "#f59e0b",
   },
   maintenance: {
-    title: "Maintenance technician",
-    decides: "Which station a free crew goes to next.",
+    title: t("Maintenance technician"),
+    decides: t("Which station a free crew goes to next."),
     colour: "#22d3ee",
   },
   supervisor: {
-    title: "Shift supervisor",
-    decides: "Whether to service a station before it fails.",
+    title: t("Shift supervisor"),
+    decides: t("Whether to service a station before it fails."),
     colour: "#c084fc",
   },
 };
 
 export const PERSONA_LABELS: Record<Persona, string> = {
-  cautious: "Cautious",
-  aggressive: "Aggressive",
-  "by-the-book": "By the book",
+  cautious: t("Cautious"),
+  aggressive: t("Aggressive"),
+  "by-the-book": t("By the book"),
 };
 
 export const DEFAULT_AGENTS: AgentSpec[] = [
@@ -232,7 +251,7 @@ export const DEFAULT_AGENTS: AgentSpec[] = [
     name: "Priya",
     role: "planner",
     persona: "aggressive",
-    trait: "You hate seeing the order book slip.",
+    trait: t("You hate seeing the order book slip."),
   },
   {
     id: "maintenance-1",
@@ -245,7 +264,7 @@ export const DEFAULT_AGENTS: AgentSpec[] = [
     name: "Sam",
     role: "supervisor",
     persona: "cautious",
-    trait: "You have seen machines here fail more often on hot days.",
+    trait: t("You have seen machines here fail more often on hot days."),
   },
 ];
 

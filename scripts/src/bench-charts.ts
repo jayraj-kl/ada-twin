@@ -15,6 +15,15 @@ import { DEMO_GRAPH, DEMO_SCENARIO } from "./lib/demo-factory";
 
 const OUT = fileURLToPath(new URL("../bench-out/", import.meta.url));
 const bench = JSON.parse(readFileSync(`${OUT}benchmark.json`, "utf8"));
+// The boiler room world as World Labs timed it: created to finished.
+const world = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL("../../apps/frontend/public/worlds/boiler/world.json", import.meta.url)),
+    "utf8",
+  ),
+);
+const worldSeconds =
+  (Date.parse(world.updated_at) - Date.parse(world.created_at)) / 1000;
 
 // The deck's palette and type.
 const C = {
@@ -251,11 +260,11 @@ function pipeline() {
   const H = 230;
   const run = bench.agentRun;
   const stages = [
-    { name: "3D world", value: "~12 min", note: "World Labs · from the deck's earlier timing", weight: 12 * 60 },
+    { name: "3D world", value: `${Math.round(worldSeconds / 60)} min`, note: `World Labs ${world.model} · ${world.created_at.slice(0, 10)}`, weight: worldSeconds },
     { name: "Price fixes", value: `${Math.round(bench.costs.lookupMs / 1000)} s`, note: "Gemini + web search", weight: bench.costs.lookupMs / 1000 },
     { name: "8-hour shift, AI crew", value: `${Math.round(run.shiftDoneMs / 1000)} s`, note: `${run.decisions} Gemini decisions`, weight: run.shiftDoneMs / 1000 },
     { name: "Playbook", value: `${round((run.playbookWrittenMs - run.shiftDoneMs) / 1000, 0)} s`, note: "crew's rules written", weight: (run.playbookWrittenMs - run.shiftDoneMs) / 1000 },
-    { name: "30-day average", value: `${round(bench.simulator.totalMs / 1000, 2)} s`, note: "in the browser", weight: bench.simulator.totalMs / 1000 },
+    { name: "30-day average", value: `${round(bench.simulator.totalMs / 1000, 2)} s`, note: "simulator, on a laptop", weight: bench.simulator.totalMs / 1000 },
   ];
   // Square-root widths so seconds-long stages stay visible next to minutes.
   const roots = stages.map((stage) => Math.sqrt(stage.weight));
@@ -286,10 +295,10 @@ function bigNumbers() {
   const W = 1500;
   const H = 210;
   const tiles = [
-    { value: `${round(bench.simulator.timesFasterThanRealTime / 1e6, 1)}M×`, note: "faster than real time (8-h shift in 15 ms)" },
-    { value: `${round(bench.simulator.totalMs / 1000, 2)} s`, note: "for a 30-day average, in-browser" },
+    { value: `${round(bench.simulator.timesFasterThanRealTime / 1e6, 1)}M×`, note: `faster than real time (8-h shift in ${bench.simulator.perShiftMs} ms)` },
+    { value: `${round(bench.simulator.totalMs / 1000, 2)} s`, note: "for a 30-day average, on a laptop" },
     { value: `${bench.agentRun.decisions - bench.agentRun.fallbacks}/${bench.agentRun.decisions}`, note: "Gemini decisions, none fell back" },
-    { value: `${bench.tests.passed ?? 71}/${bench.tests.total ?? 71}`, note: "automated tests passing" },
+    { value: `${bench.tests.passed ?? "?"}/${bench.tests.total ?? "?"}`, note: "automated tests passing" },
   ];
   const width = (W - 80) / tiles.length;
   let body = "";

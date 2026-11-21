@@ -1,10 +1,11 @@
 import type { Kpis } from "@repo/sim";
-import { usePlantUnit } from "@/scenario/plant";
+import { usePlantUnitLabel } from "@/scenario/plant";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import type { StoredRun } from "@/twin/project";
 import { signedAverage } from "./format";
 
+import { t } from "@/lib/i18n";
 /** The picked changes: how many, and their gain together and one by one. */
 export interface Picks {
   count: number;
@@ -47,12 +48,12 @@ export function PickedChanges({
   /** Drawn over the world, on its dark glass. */
   over?: boolean;
 }) {
-  const unit = usePlantUnit();
+  const unit = usePlantUnitLabel();
   const { count, together, separately } = picks;
   const quiet = over ? "text-white/70" : "text-muted-foreground";
   return (
     <section
-      aria-label="Picked changes"
+      aria-label={t("Picked changes")}
       className={cn(
         "flex flex-col gap-2 rounded-2xl border p-3",
         over
@@ -62,7 +63,10 @@ export function PickedChanges({
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <strong className="text-sm">
-          {count} picked {count === 1 ? "change" : "changes"}
+          {t("{0} picked {1}", {
+            0: count,
+            1: count === 1 ? "change" : "changes",
+          })}
         </strong>
         <span
           className={cn(
@@ -77,25 +81,28 @@ export function PickedChanges({
       </div>
       {count > 1 && together !== null && separately !== null && (
         <p className={cn("text-xs", quiet)}>
-          One by one they add up to {signedAverage(separately)}.{" "}
+          {t("One by one they add up to")} {signedAverage(separately)}.{" "}
           {Math.abs(together - separately) < 0.5
-            ? "Together they add up the same."
+            ? t("Together they add up the same.")
             : together > separately
-              ? `Together they do ${signedAverage(together - separately)} better: they help each other.`
-              : `Together they do ${signedAverage(separately - together).replace("+", "")} less: they fix the same problem.`}
+              ? t("Together they do {0} better: they help each other.", {
+                  0: signedAverage(together - separately),
+                })
+              : t("Together they do {0} less: they fix the same problem.", {
+                  0: signedAverage(separately - together).replace("+", ""),
+                })}
         </p>
       )}
       {!over && (
         <p className={cn("text-xs", quiet)}>
-          Measured on standard rules. Press Run with changes at the top to
-          see standard rules and your agents with them, on a copy of your
-          twin. They can be applied once that run is done; your twin changes
-          only when you apply them.
+          {t(
+            "Measured on standard rules. Press Run with changes at the top to see standard rules and your agents with them, on a copy of your twin. They can be applied once that run is done; your twin changes only when you apply them.",
+          )}
         </p>
       )}
       {trial.problem && (
         <p className={cn(over ? "text-[#ff8c42]" : ui.poor, "text-xs")}>
-          The run with your changes failed: {trial.problem}
+          {t("The run with your changes failed: {0}", { 0: trial.problem })}
         </p>
       )}
       {trial.blocked ? (
@@ -103,22 +110,24 @@ export function PickedChanges({
       ) : (
         trial.running && (
           <p className={cn("text-xs", quiet)}>
-            Running with these changes…
-            {hasAgents &&
-              ` ${trial.decisions} agent ${trial.decisions === 1 ? "decision" : "decisions"} so far.`}
+            {t("Running with these changes…{0}", {
+              0:
+                hasAgents &&
+                ` ${trial.decisions} agent ${trial.decisions === 1 ? "decision" : "decisions"} so far.`,
+            })}
           </p>
         )
       )}
       {trial.after && (
         <p className={cn("text-xs", quiet)}>
           {over
-            ? "The results on the right show your plant with these changes."
-            : "The table above now shows your plant with these changes."}
+            ? t("The results on the right show your plant with these changes.")
+            : t("The table above now shows your plant with these changes.")}
         </p>
       )}
       {trial.outdated && !trial.running && (
         <p className={cn("text-xs", quiet)}>
-          Your picks changed since the last run with changes.
+          {t("Your picks changed since the last run with changes.")}
         </p>
       )}
     </section>

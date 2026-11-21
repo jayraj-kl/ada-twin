@@ -1,6 +1,6 @@
 import type { FactoryGraph } from "./graph";
 import { type Policy, type SimConfig, defaultPolicy, simulate } from "./kernel";
-import type { Kpis, StationKpis } from "./kpi";
+import { type Kpis, type StationKpis, totalCrew } from "./kpi";
 
 /** The average of a measure over several days, and how far it ranged. */
 export interface Spread {
@@ -75,6 +75,26 @@ export function averageKpis(runs: Kpis[]): Kpis {
       ]),
     ),
     bottleneck,
+    // Only when every day counted it: an average with gaps would understate.
+    ...(runs.every(({ crew }) => crew)
+      ? {
+          crew: totalCrew(
+            Object.fromEntries(
+              ids(({ crew }) => crew?.byNode).map((id) => {
+                const at = (kpis: Kpis) => kpis.crew?.byNode[id];
+                return [
+                  id,
+                  {
+                    hours: mean((kpis) => at(kpis)?.hours),
+                    repairs: mean((kpis) => at(kpis)?.repairs),
+                    services: mean((kpis) => at(kpis)?.services),
+                  },
+                ];
+              }),
+            ),
+          ),
+        }
+      : {}),
   };
 }
 

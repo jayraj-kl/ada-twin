@@ -26,10 +26,12 @@ import {
   type Tier,
   rankChanges,
 } from "@/plant/rank";
+import { traceReport } from "@/plant/claims";
 import { RedesignWorld } from "@/plant/RedesignWorld";
+import { TracedText } from "@/plant/TracedText";
 import { type PlantView, cutView, dataUrl, viewsFor } from "@/plant/views";
 import { moneyRange, perPart, signed } from "@/results/format";
-import { usePlantUnit } from "@/scenario/plant";
+import { usePlantUnitLabel } from "@/scenario/plant";
 import { originLabel } from "@/results/tabs";
 import {
   type InlineImage,
@@ -37,13 +39,10 @@ import {
   illustrate,
   imageUrl,
 } from "@/twin/api";
-import {
-  APPLIED_KEY,
-  PLANT_CHAT_KEY,
-  useStored,
-} from "@/twin/project";
+import { APPLIED_KEY, PLANT_CHAT_KEY, useStored } from "@/twin/project";
 import { useProjectWorld } from "@/twin/world";
 
+import { t } from "@/lib/i18n";
 const NO_APPLIED: AppliedRedesign[] = [];
 
 type Threads = Record<string, Record<string, PlantMessage[]>>;
@@ -62,7 +61,7 @@ const when = (at: number) =>
   }).format(at);
 
 export default function PlantPage() {
-  const unit = usePlantUnit();
+  const unit = usePlantUnitLabel();
   const projectId = useProjectId();
   const projectName =
     useProjects().find(({ id }) => id === projectId)?.name ?? "";
@@ -180,6 +179,25 @@ export default function PlantPage() {
     write(record, record.report);
   }, [record, write]);
 
+  // --- every number in the written report, traced to what the sim measured --
+  const traced = useMemo(
+    () =>
+      record?.report && record.report.summary !== undefined
+        ? traceReport(record.report, {
+            changes: record.changes,
+            scenario: record.run.scenario,
+            bottleneck: record.run.graph.nodes.find(
+              ({ id }) => id === record.run.baseline.bottleneck,
+            )?.name,
+            costs: Object.fromEntries(
+              record.report.rows.map(({ id }) => [id, costText(id)]),
+            ),
+            unit,
+          })
+        : null,
+    [record, costText, unit],
+  );
+
   // --- the photos -------------------------------------------------------------
   const { views, unseen } = useMemo(
     () =>
@@ -195,7 +213,9 @@ export default function PlantPage() {
   const [threadsLoaded, setThreadsLoaded] = useState(false);
   // Saved with the project; it has loaded before this step shows.
   useEffect(() => {
-    setThreads((getState(projectId, PLANT_CHAT_KEY) as Threads | undefined) ?? {});
+    setThreads(
+      (getState(projectId, PLANT_CHAT_KEY) as Threads | undefined) ?? {},
+    );
     setThreadsLoaded(true);
   }, [projectId]);
   useEffect(() => {
@@ -239,7 +259,9 @@ export default function PlantPage() {
       .catch((error: unknown) => {
         if (!cancelled)
           setOriginalProblem(
-            `${error instanceof Error ? error.message : String(error)}. The photos need the world fetched in the capture step.`,
+            t("{0}. The photos need the world fetched in the capture step.", {
+              0: error instanceof Error ? error.message : String(error),
+            }),
           );
       });
     return () => {
@@ -314,7 +336,10 @@ export default function PlantPage() {
         const id = wanted[index]!;
         if (!result.stored) {
           unkeptTurns.current.set(id, result.turn);
-          setUnkept((current) => ({ ...current, [id]: dataUrl(result.image!) }));
+          setUnkept((current) => ({
+            ...current,
+            [id]: dataUrl(result.image!),
+          }));
         }
         return id;
       });
@@ -334,7 +359,7 @@ export default function PlantPage() {
             first === -1
               ? (words ??
                 errors[0] ??
-                "Nano Banana made no drawing. Try saying it differently.")
+                t("Nano Banana made no drawing. Try saying it differently."))
               : (words ?? ""),
           images: ids,
           ...(first === -1 ? { failed: true } : { picked: first }),
@@ -370,15 +395,17 @@ export default function PlantPage() {
   if (!record) {
     return (
       <div className="mx-auto max-w-xl py-16 text-center">
-        <p className={cn(ui.eyebrow, "mx-auto")}>Step 6 · New plant</p>
-        <h1 className={ui.title}>Nothing applied yet</h1>
+        <p className={cn(ui.eyebrow, "mx-auto")}>{t("Step 6 · New plant")}</p>
+        <h1 className={ui.title}>{t("Nothing applied yet")}</h1>
         <p className="mb-6 text-muted-foreground">
-          Redesign the plant in Results, then press{" "}
-          <strong>Apply to my twin</strong>. The applied changes are ranked
-          here, and drawn into your photos.
+          {t("Redesign the plant in Results, then press")}{" "}
+          <strong>{t("Apply to my twin")}</strong>
+          {t(
+            ". The applied changes are ranked here, and drawn into your photos.",
+          )}
         </p>
         <Link to={path("results")} className={ui.primary}>
-          <ArrowLeftIcon /> Go to Results
+          <ArrowLeftIcon /> {t("Go to Results")}
         </Link>
       </div>
     );
@@ -401,25 +428,30 @@ export default function PlantPage() {
           {/* On paper: what this is, for whom, and when. */}
           <div className="mb-5 hidden items-baseline justify-between gap-4 border-b-2 border-ink pb-2 text-xs print:flex">
             <span className="font-semibold tracking-[0.08em] uppercase">
-              AdaTwin · Redesign report
+              {t("AdaTwin · Redesign report")}
             </span>
             <span className="text-muted-foreground">
-              {projectName} · applied {when(record.at)}
+              {t("{0} · applied {1}", { 0: projectName, 1: when(record.at) })}
             </span>
           </div>
-          <p className={cn(ui.eyebrow, "print:hidden")}>Step 6 · New plant</p>
+          <p className={cn(ui.eyebrow, "print:hidden")}>
+            {t("Step 6 · New plant")}
+          </p>
           <h1 className={cn(ui.title, "print:text-3xl")}>
-            What the redesign changes
+            {t("What the redesign changes")}
           </h1>
           <p className={cn(ui.lede, "mb-6")}>
-            The changes you applied, most critical first for{" "}
+            {t("The changes you applied, most critical first for")}{" "}
             <strong className="text-foreground">
               {record.run.scenario.name}
             </strong>
-            , each measured over {daysFor(record.run)} simulated days.
+            {t(", each measured over")} {daysFor(record.run)}{" "}
+            {t("simulated days.")}
             <span className="print:hidden">
               {" "}
-              On the right, Nano Banana draws them into photos of your plant.
+              {t(
+                "On the right, Nano Banana draws them into photos of your plant.",
+              )}
             </span>
           </p>
         </div>
@@ -430,7 +462,7 @@ export default function PlantPage() {
           {applied.length > 1 && (
             <>
               <label htmlFor="applied" className="sr-only">
-                Applied redesign
+                {t("Applied redesign")}
               </label>
               <select
                 id="applied"
@@ -440,8 +472,8 @@ export default function PlantPage() {
               >
                 {[...applied].reverse().map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
-                    Applied {when(candidate.at)} · {candidate.changes.length}{" "}
-                    changes
+                    {t("Applied")} {when(candidate.at)} ·{" "}
+                    {candidate.changes.length} {t("changes")}
                   </option>
                 ))}
               </select>
@@ -451,10 +483,10 @@ export default function PlantPage() {
             className={cn(ui.button, "h-9")}
             onClick={() => window.print()}
           >
-            <PrinterIcon /> Print
+            <PrinterIcon /> {t("Print")}
           </button>
           <Link to={path("results")} className={cn(ui.button, "h-9")}>
-            <ArrowLeftIcon /> Results
+            <ArrowLeftIcon /> {t("Results")}
           </Link>
         </div>
       </div>
@@ -462,23 +494,25 @@ export default function PlantPage() {
       <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* The report. */}
         <section
-          aria-label="Applied changes"
+          aria-label={t("Applied changes")}
           className="flex flex-col gap-4"
         >
           {!report ? (
             <div className={ui.panel}>
               <p className="text-sm font-semibold">
                 {rankProblem
-                  ? "The changes could not be measured"
-                  : "Measuring each change…"}
+                  ? t("The changes could not be measured")
+                  : t("Measuring each change…")}
               </p>
               {rankProblem ? (
                 <p className="mt-1 text-sm text-destructive">{rankProblem}</p>
               ) : (
                 <>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    The shift runs {daysFor(record.run)} days with and without
-                    each change, on standard rules.
+                    {t(
+                      "The shift runs {0} days with and without each change, on standard rules.",
+                      { 0: daysFor(record.run) },
+                    )}
                   </p>
                   <div className={cn(ui.timeline, "mt-3")}>
                     <div
@@ -494,11 +528,13 @@ export default function PlantPage() {
             <>
               <div data-tour="report" className="grid grid-cols-2 gap-3">
                 <div className={ui.kpi}>
-                  <div className={ui.kpiLabel}>Before, {unit} per shift</div>
+                  <div className={ui.kpiLabel}>
+                    {t("Before, {0} per shift", { 0: unit })}
+                  </div>
                   <div className={ui.kpiValue}>{Math.round(report.before)}</div>
                 </div>
                 <div className={cn(ui.kpi, "border-ink")}>
-                  <div className={ui.kpiLabel}>With the redesign</div>
+                  <div className={ui.kpiLabel}>{t("With the redesign")}</div>
                   <div className={ui.kpiValue}>{Math.round(report.after)}</div>
                   <div
                     className={cn(
@@ -506,14 +542,15 @@ export default function PlantPage() {
                       report.after >= report.before ? ui.good : ui.poor,
                     )}
                   >
-                    {signed(report.after - report.before, 1)} a shift,{" "}
-                    {daysFor(record.run)}-day average
+                    {signed(report.after - report.before, 1)} {t("a shift,")}{" "}
+                    {daysFor(record.run)}
+                    {t("-day average")}
                   </div>
                 </div>
                 {report.targets.length > 0 && (
                   <div className={cn(ui.kpi, "col-span-2")}>
                     <div className={ui.kpiLabel}>
-                      Scenario targets, before → with the redesign
+                      {t("Scenario targets, before → with the redesign")}
                     </div>
                     <ul className="mt-2 flex flex-wrap gap-1.5 text-xs">
                       {report.targets.map((target) => (
@@ -541,7 +578,7 @@ export default function PlantPage() {
               <div className={ui.panel}>
                 <div className={ui.panelTitle}>
                   <span className="flex items-center gap-1.5">
-                    <SparklesIcon className="size-4" /> Summary
+                    <SparklesIcon className="size-4" /> {t("Summary")}
                   </span>
                   {report.summary !== undefined && !writing && (
                     <button
@@ -549,30 +586,51 @@ export default function PlantPage() {
                       onClick={() => write(record, report)}
                       className="flex items-center gap-1 text-xs font-normal text-muted-foreground hover:text-foreground print:hidden"
                     >
-                      <RefreshCwIcon className="size-3" /> Rewrite
+                      <RefreshCwIcon className="size-3" /> {t("Rewrite")}
                     </button>
                   )}
                 </div>
                 {writing ? (
                   <p className="text-sm text-muted-foreground">
-                    Gemini is writing the report…
+                    {t("Gemini is writing the report…")}
                   </p>
                 ) : writeProblem ? (
                   <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                     <TriangleAlertIcon className="size-4 text-warning" />
-                    The summary could not be written ({writeProblem}). The
-                    ranking below stands on its own.
+                    {t("The summary could not be written (")}
+                    {writeProblem}
+                    {t("). The ranking below stands on its own.")}
                     <button
                       className={cn(ui.button, "h-8")}
                       onClick={() => write(record, report)}
                     >
-                      Write the summary
+                      {t("Write the summary")}
                     </button>
                   </p>
                 ) : (
-                  <p className="text-sm">
-                    {report.summary || "No summary yet."}
-                  </p>
+                  <>
+                    <p className="text-sm">
+                      {report.summary && traced ? (
+                        <TracedText pieces={traced.summary} />
+                      ) : (
+                        report.summary || t("No summary yet.")
+                      )}
+                    </p>
+                    {traced && traced.misses.length > 0 && (
+                      <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                        <TriangleAlertIcon className="mt-px size-3.5 shrink-0 text-warning" />
+                        <span>
+                          {traced.misses.length === 1
+                            ? t("1 number couldn't")
+                            : t("{0} numbers couldn't", {
+                                0: traced.misses.length,
+                              })}{" "}
+                          {t("be traced to the simulation:")}{" "}
+                          {traced.misses.join(", ")}
+                        </span>
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -609,12 +667,12 @@ export default function PlantPage() {
                             )}
                             {together && (
                               <span className={ui.tag}>
-                                Only with the others
+                                {t("Only with the others")}
                               </span>
                             )}
                             {row.marginal <= -1 && (
                               <span className={cn(ui.tag, ui.tagAssumed)}>
-                                Better without it
+                                {t("Better without it")}
                               </span>
                             )}
                           </div>
@@ -623,41 +681,49 @@ export default function PlantPage() {
                           </h2>
                           {row.needed.length > 0 && (
                             <p className="mt-0.5 text-xs font-semibold text-destructive">
-                              Without it the plant misses:{" "}
+                              {t("Without it the plant misses:")}{" "}
                               {row.needed.join(", ")}
                             </p>
                           )}
                           <p className="mt-1.5 text-sm text-muted-foreground">
-                            {report.paragraphs?.[row.id] ?? change.detail}
+                            {traced?.paragraphs[row.id] ? (
+                              <TracedText pieces={traced.paragraphs[row.id]!} />
+                            ) : (
+                              (report.paragraphs?.[row.id] ?? change.detail)
+                            )}
                           </p>
                           <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
                             <div>
                               <dt className="text-muted-foreground">
-                                Without it
+                                {t("Without it")}
                               </dt>
                               <dd className="font-mono font-semibold">
-                                {signed(-row.marginal, 1)}/shift
+                                {t("{0}/shift", {
+                                  0: signed(-row.marginal, 1),
+                                })}
                               </dd>
                             </div>
                             <div>
                               <dt className="text-muted-foreground">
-                                On its own
+                                {t("On its own")}
                               </dt>
                               <dd className="font-mono font-semibold">
-                                {signed(row.solo, 1)}/shift
+                                {t("{0}/shift", { 0: signed(row.solo, 1) })}
                               </dd>
                             </div>
                             <div>
-                              <dt className="text-muted-foreground">Cost</dt>
+                              <dt className="text-muted-foreground">
+                                {t("Cost")}
+                              </dt>
                               <dd className="font-mono font-semibold">
-                                {costText(row.id) ?? "not looked up"}
+                                {costText(row.id) ?? t("not looked up")}
                                 {each !== null && (
                                   <span className="block font-normal text-muted-foreground">
                                     {moneyRange(
                                       { low: each, high: each },
                                       record.currency,
                                     )}{" "}
-                                    per part a shift
+                                    {t("per part a shift")}
                                   </span>
                                 )}
                               </dd>
@@ -670,16 +736,18 @@ export default function PlantPage() {
                                 onClick={() => setActiveId(view.id)}
                                 className="font-semibold underline-offset-4 hover:underline"
                               >
-                                See it in the photo of {view.label} →
+                                {t("See it in the photo of {0} →", {
+                                  0: view.label,
+                                })}
                               </button>
                             ) : (
                               <span className="text-muted-foreground">
-                                No photo:{" "}
+                                {t("No photo:")}{" "}
                                 {unseen
                                   .find(
                                     ({ change: other }) => other.id === row.id,
                                   )
-                                  ?.reason.toLowerCase() ?? "nothing to see"}
+                                  ?.reason.toLowerCase() ?? t("nothing to see")}
                                 .
                               </span>
                             )}
@@ -691,9 +759,9 @@ export default function PlantPage() {
                 })}
               </ol>
               <p className="text-xs text-muted-foreground">
-                "Without it" is what the redesign loses when only this change is
-                taken out, so changes that work together count. The parts
-                don&apos;t add up to the total when changes overlap.
+                {t(
+                  '"Without it" is what the redesign loses when only this change is taken out, so changes that work together count. The parts don\'t add up to the total when changes overlap.',
+                )}
               </p>
             </>
           )}
@@ -701,7 +769,7 @@ export default function PlantPage() {
           {gallery.length > 0 && (
             <div className={cn(ui.panel, "break-inside-avoid")}>
               <div className={ui.panelTitle}>
-                In your photos
+                {t("In your photos")}
                 <span className={ui.hint}>{AI_BADGE}</span>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -709,7 +777,7 @@ export default function PlantPage() {
                   <figure key={view.id} className="flex flex-col gap-1">
                     <img
                       src={src}
-                      alt={`${view.label} as the AI drew it`}
+                      alt={t("{0} as the AI drew it", { 0: view.label })}
                       className="aspect-[16/9] w-full rounded-xl border border-border object-cover"
                     />
                     <figcaption className="text-xs text-muted-foreground">
@@ -734,14 +802,16 @@ export default function PlantPage() {
 
         {/* The photos, and the conversation about them. */}
         <aside
-          aria-label="Your plant in photos"
+          aria-label={t("Your plant in photos")}
           data-tour="photos"
           className="flex flex-col gap-3 rounded-3xl border border-border bg-card p-4 lg:sticky lg:top-20 lg:h-[calc(100svh-6.5rem)] lg:overflow-y-auto print:hidden"
         >
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold">Your plant, redesigned</h2>
+            <h2 className="text-sm font-semibold">
+              {t("Your plant, redesigned")}
+            </h2>
             <span className={ui.hint}>
-              Nano Banana · a visual aid, not a drawing to build from
+              {t("Nano Banana · a visual aid, not a drawing to build from")}
             </span>
           </div>
           {active ? (
@@ -763,25 +833,30 @@ export default function PlantPage() {
             />
           ) : (
             <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-              None of these changes is something you can see on the floor, or
-              the machines they change have no pins in the world. Pin them in
-              the{" "}
+              {t(
+                "None of these changes is something you can see on the floor, or the machines they change have no pins in the world. Pin them in the",
+              )}{" "}
               <Link to={path("twin")} className="underline">
-                twin step
+                {t("twin step")}
               </Link>{" "}
-              to draw them.
+              {t("to draw them.")}
             </p>
           )}
           <p className="text-[11px] text-muted-foreground">
-            Drawings stay in this browser. Clearing its site data removes them.
+            {t(
+              "Drawings stay in this browser. Clearing its site data removes them.",
+            )}
           </p>
         </aside>
       </div>
       <p className="mt-8 hidden border-t border-border pt-3 text-[11px] text-muted-foreground print:block">
-        Simulated with AdaTwin: each figure is the average of{" "}
-        {daysFor(record.run)} simulated shifts of {record.run.scenario.name},
-        on standard rules. Drawings are AI visual aids, not plans to build
-        from. Printed {when(Date.now())}.
+        {t("Simulated with AdaTwin: each figure is the average of")}{" "}
+        {daysFor(record.run)} {t("simulated shifts of")}{" "}
+        {record.run.scenario.name}
+        {t(
+          ", on standard rules. Drawings are AI visual aids, not plans to build from. Printed",
+        )}{" "}
+        {when(Date.now())}.
       </p>
     </>
   );

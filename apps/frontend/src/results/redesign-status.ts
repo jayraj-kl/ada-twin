@@ -2,6 +2,7 @@ import type { FactoryGraph, Kpis, Scenario } from "@repo/sim";
 import type { AgentSpec, StoredRun } from "@/twin/project";
 import type { Change } from "@/twin/recommend";
 
+import { t } from "@/lib/i18n";
 /** JSON with object keys sorted, so a value saved and read back keys the same. */
 export function stableJson(value: unknown): string {
   return JSON.stringify(value, (_, item: unknown) =>
@@ -27,7 +28,10 @@ type Picks = Pick<Change, "diffs" | "extraCrews">[];
 
 /** Which picks on which run a run with changes was made for. */
 export const trialKeyOf = (run: StoredRun, picks: Picks) =>
-  stableJson([runId(run), picks.map(({ diffs, extraCrews }) => [diffs, extraCrews])]);
+  stableJson([
+    runId(run),
+    picks.map(({ diffs, extraCrews }) => [diffs, extraCrews]),
+  ]);
 
 /** The picked changes, run with the crew on a copy of the twin. */
 export interface Trial {
@@ -117,7 +121,8 @@ export function redesignStatus(input: {
       ].filter((reason): reason is ChangedSince => Boolean(reason))
     : [];
   const trialKey = run ? trialKeyOf(run, picks) : "";
-  const trialCurrent = picks.length > 0 && trial !== null && trial.key === trialKey;
+  const trialCurrent =
+    picks.length > 0 && trial !== null && trial.key === trialKey;
   const outdated = picks.length > 0 && trial !== null && !trialCurrent;
   const tested = trialCurrent && !stale;
   const runsPicks = run !== null && !stale && picks.length > 0 && !tested;
@@ -130,7 +135,7 @@ export function redesignStatus(input: {
     outdated,
     tested,
     blocked: stale
-      ? "Your twin has changed since this run: run the shift again first."
+      ? t("Your twin has changed since this run: run the shift again first.")
       : "",
     worse: run && trialCurrent ? worseThan(run, trial!.run, unit) : "",
     offer: running
@@ -139,23 +144,27 @@ export function redesignStatus(input: {
           label:
             running.trial && run?.agents.length
               ? `Running… ${running.decisions} ${running.decisions === 1 ? "decision" : "decisions"}`
-              : "Running…",
+              : t("Running…"),
         }
       : !run
-        ? { does: "shift", label: "Run the shift" }
+        ? { does: "shift", label: t("Run the shift") }
         : runsPicks
           ? {
               does: "picks",
-              label: outdated ? "Run with the new picks" : "Run with changes",
-              why: "Run the shift with the picked changes, on a copy of your twin",
+              label: outdated
+                ? t("Run with the new picks")
+                : t("Run with changes"),
+              why: t(
+                "Run the shift with the picked changes, on a copy of your twin",
+              ),
             }
           : changed.length > 0
             ? {
                 does: "shift",
-                label: `Run again · ${changed[0]} changed`,
+                label: t("Run again · {0} changed", { 0: changed[0] }),
                 why: `Changed since this run: ${changed.join(", ")}.${
                   stale && picks.length > 0
-                    ? " Run it again, then run with your changes."
+                    ? t(" Run it again, then run with your changes.")
                     : ""
                 }`,
               }
@@ -169,14 +178,20 @@ function worseThan(run: StoredRun, trial: StoredRun, unit: string): string {
     days.reduce((sum, { completed }) => sum + completed, 0) / days.length;
   const daysOf = (of: StoredRun) => of.days ?? [of.baseline];
   const lost = (by: number, how: string) =>
-    by >= 0.5 ? `${Math.round(by * 10) / 10} fewer ${unit} a shift ${how}` : "";
+    by >= 0.5
+      ? t("{0} fewer {1} a shift {2}", {
+          0: Math.round(by * 10) / 10,
+          1: unit,
+          2: how,
+        })
+      : "";
   const losses = [
-    lost(mean(daysOf(run)) - mean(daysOf(trial)), "on standard rules"),
+    lost(mean(daysOf(run)) - mean(daysOf(trial)), t("on standard rules")),
     ...(run.agents.length > 0
-      ? [lost(run.kpis.completed - trial.kpis.completed, "with your agents")]
+      ? [lost(run.kpis.completed - trial.kpis.completed, t("with your agents"))]
       : []),
   ].filter(Boolean);
   return losses.length > 0
-    ? `In the run these changes shipped ${losses.join(" and ")}`
+    ? t("In the run these changes shipped {0}", { 0: losses.join(" and ") })
     : "";
 }

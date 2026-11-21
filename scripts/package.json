@@ -11,7 +11,9 @@
     "fetch-world": "tsx --env-file-if-exists=../.env src/fetch-world.ts",
     "locate-demo": "tsx --env-file-if-exists=../.env src/locate-demo.ts",
     "benchmark": "tsx --env-file-if-exists=../.env src/benchmark.ts",
-    "bench-charts": "tsx src/bench-charts.ts"
+    "bench-charts": "tsx src/bench-charts.ts",
+    "demo-packs": "tsx src/demo-packs.ts",
+    "record-demo-figures": "tsx --env-file-if-exists=../apps/api/.env src/record-demo-figures.ts"
   },
   "dependencies": {
     "@repo/agent": "workspace:*",
@@ -25,6 +27,8 @@
     "@types/node": "^26.6.3",
     "@types/pngjs": "6.0.5",
     "eslint": "10.9.1",
+    "marked": "16.4.1",
+    "playwright": "1.58.2",
     "tsx": "^4.23.15",
     "typescript": "7.0.2"
   }

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { TOURS, type TourStop } from "./stops";
 import { endTour, hasSeenTour, startTour, useOpenTour } from "./store";
 
+import { t } from "@/lib/i18n";
 interface Box {
   x: number;
   y: number;
@@ -51,9 +52,9 @@ function place(box: Box | null, width: number, height: number) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const clampX = (x: number) => Math.min(Math.max(x, EDGE), vw - width - EDGE);
-  const clampY = (y: number) =>
-    Math.min(Math.max(y, EDGE), vh - height - EDGE);
-  if (!box) return { x: clampX((vw - width) / 2), y: clampY((vh - height) / 2) };
+  const clampY = (y: number) => Math.min(Math.max(y, EDGE), vh - height - EDGE);
+  if (!box)
+    return { x: clampX((vw - width) / 2), y: clampY((vh - height) / 2) };
   const x = clampX(box.x + box.w / 2 - width / 2);
   if (box.y + box.h + GAP + height <= vh - EDGE)
     return { x, y: box.y + box.h + GAP };
@@ -121,9 +122,7 @@ function TourRun({ step }: { step: StepSlug }) {
       const now = stops.flatMap((one, where) =>
         !one.target || find(one) ? [where] : [],
       );
-      setPresent((before) =>
-        before.join() === now.join() ? before : now,
-      );
+      setPresent((before) => (before.join() === now.join() ? before : now));
       const element = find(stop);
       const nextBox = element ? frame(element) : null;
       setBox((before) => (sameBox(before, nextBox) ? before : nextBox));
@@ -156,8 +155,7 @@ function TourRun({ step }: { step: StepSlug }) {
 
   // The tour ends only from its last card. Only an intro card means the page
   // has nothing to show yet, so it is shown again later.
-  const forward = () =>
-    last ? endTour(present.length > 1) : setIndex(at + 1);
+  const forward = () => (last ? endTour(present.length > 1) : setIndex(at + 1));
   const back = () => setIndex(Math.max(at - 1, 0));
 
   // Ahead of the page's own keys, which stay quiet while the tour is open.
@@ -223,7 +221,11 @@ function TourRun({ step }: { step: StepSlug }) {
         className="absolute top-0 left-0 w-[min(340px,calc(100vw-32px))] rounded-3xl border border-ink bg-card p-5 text-card-foreground shadow-hard outline-none"
       >
         <span className={ui.eyebrow}>
-          {STEPS[stepIndex(step)]!.label} · {at + 1} of {present.length}
+          {t("{0} · {1} of {2}", {
+            0: STEPS[stepIndex(step)]!.label,
+            1: at + 1,
+            2: present.length,
+          })}
         </span>
 
         <AnimatePresence mode="wait" initial={false}>
@@ -249,7 +251,7 @@ function TourRun({ step }: { step: StepSlug }) {
             {last && next && (
               <p className="mt-3 rounded-2xl bg-muted px-3 py-2 text-xs text-muted-foreground">
                 <span className="font-semibold text-foreground">
-                  Next up · {next.label}
+                  {t("Next up · {0}", { 0: next.label })}
                 </span>{" "}
                 · {next.blurb}
               </p>
@@ -276,15 +278,18 @@ function TourRun({ step }: { step: StepSlug }) {
           <div className="flex items-center gap-2">
             {at > 0 && (
               <button type="button" className={ui.button} onClick={back}>
-                Back
+                {t("Back")}
               </button>
             )}
             <button
               type="button"
-              className={cn(ui.primary, "hover:-translate-y-px hover:shadow-hard-sm")}
+              className={cn(
+                ui.primary,
+                "hover:-translate-y-px hover:shadow-hard-sm",
+              )}
               onClick={forward}
             >
-              {last ? "Got it" : at === 0 ? "Show me" : "Next"}
+              {last ? t("Got it") : at === 0 ? t("Show me") : t("Next")}
             </button>
           </div>
         </div>
@@ -301,8 +306,8 @@ export function TourButton({ step }: { step: StepSlug }) {
     <button
       type="button"
       onClick={() => startTour(step)}
-      aria-label="Show me around this page"
-      title="Show me around this page"
+      aria-label={t("Show me around this page")}
+      title={t("Show me around this page")}
       className="grid size-10 place-items-center rounded-full border border-border bg-card text-foreground outline-none transition-colors hover:border-ink focus-visible:ring-[3px] focus-visible:ring-ring/40"
     >
       <CircleHelpIcon className="size-5" />

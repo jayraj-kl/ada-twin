@@ -14,6 +14,7 @@ import { motionTokens, springs } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { PlantView } from "./views";
 
+import { t } from "@/lib/i18n";
 export interface PlantMessage {
   id: string;
   role: "user" | "assistant";
@@ -43,7 +44,7 @@ export function pickedImage(thread: PlantMessage[]): string | null {
   return null;
 }
 
-export const AI_BADGE = "AI illustration · not to scale";
+export const AI_BADGE = t("AI illustration · not to scale");
 
 /** The photo as it is and as drawn, with a handle to wipe between them. */
 export function Compare({
@@ -61,19 +62,19 @@ export function Compare({
       {before ? (
         <img
           src={before}
-          alt={`${label} as it is`}
+          alt={t("{0} as it is", { 0: label })}
           className="absolute inset-0 size-full object-cover"
         />
       ) : (
         <div className="absolute inset-0 grid place-items-center text-xs text-white/60">
-          Cutting the view out of your panorama…
+          {t("Cutting the view out of your panorama…")}
         </div>
       )}
       {after && (
         <>
           <img
             src={after}
-            alt={`${label} as the AI drew it`}
+            alt={t("{0} as the AI drew it", { 0: label })}
             className="absolute inset-0 size-full object-cover"
             style={{ clipPath: `inset(0 0 0 ${split}%)` }}
           />
@@ -88,19 +89,19 @@ export function Compare({
             max={100}
             value={split}
             onChange={(event) => setSplit(Number(event.target.value))}
-            aria-label="Wipe between the photo and the drawing"
+            aria-label={t("Wipe between the photo and the drawing")}
             className="absolute inset-0 size-full cursor-ew-resize opacity-0"
           />
           <span className="pointer-events-none absolute top-2 left-2 rounded-full bg-[#14140f]/80 px-2 py-0.5 text-[11px] font-semibold text-white">
-            Now
+            {t("Now")}
           </span>
           <span className="pointer-events-none absolute top-2 right-2 rounded-full border border-ink bg-primary px-2 py-0.5 text-[11px] font-semibold text-[#14140f]">
-            Redesign
+            {t("Redesign")}
           </span>
         </>
       )}
       <span className="pointer-events-none absolute bottom-2 left-2 rounded-full bg-[#14140f]/80 px-2 py-0.5 font-mono text-[10px] tracking-wide text-white/90 uppercase">
-        {after ? AI_BADGE : "Your photo"}
+        {after ? AI_BADGE : t("Your photo")}
       </span>
     </div>
   );
@@ -181,7 +182,7 @@ export function ImageChat({
       {views.length > 1 && (
         <div
           role="tablist"
-          aria-label="Photos"
+          aria-label={t("Photos")}
           className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none]"
         >
           {views.map((view) => (
@@ -221,15 +222,16 @@ export function ImageChat({
       {after && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           <span>
-            Drag across the photo to compare. Every drawing carries
-            Google&apos;s SynthID watermark.
+            {t(
+              "Drag across the photo to compare. Every drawing carries Google's SynthID watermark.",
+            )}
           </span>
           <a
             href={after}
             download={`${active.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-redesign.jpg`}
             className="flex items-center gap-1 rounded-full border border-border px-2.5 py-1 font-semibold text-foreground outline-none hover:border-ink focus-visible:ring-[3px] focus-visible:ring-ring/40"
           >
-            <DownloadIcon className="size-3.5" /> Download
+            <DownloadIcon className="size-3.5" /> {t("Download")}
           </a>
         </div>
       )}
@@ -242,8 +244,9 @@ export function ImageChat({
         {!started && (
           <li className="rounded-2xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
             <ImageIcon className="mr-1.5 inline size-4 align-[-3px]" />
-            Nano Banana draws the redesign into this photo. The request below is
-            written from your changes: edit it, then send it.
+            {t(
+              "Nano Banana draws the redesign into this photo. The request below is written from your changes: edit it, then send it.",
+            )}
           </li>
         )}
         {thread.map((message) =>
@@ -268,14 +271,15 @@ export function ImageChat({
                 <p className="flex items-start gap-1.5 rounded-xl border border-warning/60 bg-warning/10 px-2.5 py-1.5 text-xs text-foreground">
                   <TriangleAlertIcon className="mt-px size-3.5 shrink-0 text-warning" />
                   <span>
-                    <strong>Not in your redesign.</strong> {message.outside}{" "}
+                    <strong>{t("Not in your redesign.")}</strong>{" "}
+                    {message.outside}{" "}
                     <Link
                       to={resultsPath}
                       className="underline underline-offset-2"
                     >
-                      Measure it in Results
+                      {t("Measure it in Results")}
                     </Link>{" "}
-                    before you plan on it.
+                    {t("before you plan on it.")}
                   </span>
                 </p>
               )}
@@ -295,7 +299,7 @@ export function ImageChat({
                         type="button"
                         onClick={() => onPick(message.id, index)}
                         aria-pressed={chosen}
-                        aria-label={`Use drawing ${index + 1}`}
+                        aria-label={t("Use drawing {0}", { 0: index + 1 })}
                         className={cn(
                           "relative aspect-[16/9] overflow-hidden rounded-xl border-2 bg-[#14140f] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
                           chosen
@@ -321,7 +325,7 @@ export function ImageChat({
                         key={`failed-${index}`}
                         className="grid aspect-[16/9] place-items-center rounded-xl border border-dashed border-border text-xs text-muted-foreground"
                       >
-                        No drawing
+                        {t("No drawing")}
                       </div>
                     );
                   })}
@@ -355,7 +359,7 @@ export function ImageChat({
               ))}
             </div>
             <span className="text-xs text-muted-foreground">
-              Drawing… this takes 10 to 30 seconds.
+              {t("Drawing… this takes 10 to 30 seconds.")}
             </span>
           </li>
         )}
@@ -366,7 +370,7 @@ export function ImageChat({
         className="flex flex-col gap-1.5 rounded-[22px] border border-ink bg-card p-1.5 pl-3 shadow-hard-sm transition-shadow focus-within:shadow-hard"
       >
         <label htmlFor="plant-chat" className="sr-only">
-          Tell Nano Banana what to draw
+          {t("Tell Nano Banana what to draw")}
         </label>
         <textarea
           id="plant-chat"
@@ -386,16 +390,18 @@ export function ImageChat({
           }}
           placeholder={
             full
-              ? "This photo has reached its limit of messages"
+              ? t("This photo has reached its limit of messages")
               : started
-                ? "Change the drawing, e.g. make the new tank grey, or move it to the left wall"
-                : "What to draw into this photo"
+                ? t(
+                    "Change the drawing, e.g. make the new tank grey, or move it to the left wall",
+                  )
+                : t("What to draw into this photo")
           }
           className="max-h-40 min-h-12 resize-none bg-transparent py-1.5 pr-1.5 text-sm outline-none [field-sizing:content] placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
         />
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span id="plant-count-label">Drawings</span>
+            <span id="plant-count-label">{t("Drawings")}</span>
             <div
               role="radiogroup"
               aria-labelledby="plant-count-label"
@@ -420,14 +426,18 @@ export function ImageChat({
               ))}
             </div>
             <span
-              title={`${imageModel?.label ?? "Nano Banana 2.1"} on Vertex AI`}
+              title={t("{0} on Vertex AI", {
+                0: imageModel?.label ?? "Nano Banana 2.1",
+              })}
             >
               ≈ ${(count * price).toFixed(2)}
             </span>
           </div>
           <motion.button
             type="submit"
-            aria-label={started ? "Send to Nano Banana" : "Show it in my photo"}
+            aria-label={
+              started ? t("Send to Nano Banana") : t("Show it in my photo")
+            }
             disabled={!draft.trim() || busy || full || !original}
             whileTap={{ scale: motionTokens.scale.press }}
             className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-ink bg-primary px-3.5 text-[13px] font-semibold text-[#14140f] outline-none transition-opacity hover:shadow-hard-sm focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:opacity-40 disabled:hover:shadow-none"

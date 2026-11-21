@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import type { ScenarioAnswer } from "@/twin/api";
 import { FIELD_LABELS } from "./fields";
 
+import { t } from "@/lib/i18n";
 export interface ScenarioChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -29,8 +30,8 @@ export interface ScenarioChatMessage {
 
 // Shown when the AI's suggestions are not to be had.
 const EXAMPLES = [
-  "A heatwave week with a rush order and half the maintenance crew off sick",
-  "A quiet shift with half the usual demand",
+  t("A heatwave week with a rush order and half the maintenance crew off sick"),
+  t("A quiet shift with half the usual demand"),
 ];
 
 /**
@@ -80,7 +81,7 @@ export function ScenarioChat({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-sm font-semibold">
-          <SparklesIcon className="size-4" /> Describe it in words
+          <SparklesIcon className="size-4" /> {t("Describe it in words")}
         </span>
         {messages.length > 0 && (
           <button
@@ -88,7 +89,7 @@ export function ScenarioChat({
             onClick={onClear}
             className="rounded-full px-2 py-0.5 text-xs text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
           >
-            Clear
+            {t("Clear")}
           </button>
         )}
       </div>
@@ -97,10 +98,10 @@ export function ScenarioChat({
         <div className="flex flex-col gap-1.5">
           <span className="text-xs text-muted-foreground">
             {suggestions === null
-              ? "Gemini is suggesting scenarios for this plant…"
+              ? t("Gemini is suggesting scenarios for this plant…")
               : suggestions?.length
-                ? "Suggested by Gemini for this plant"
-                : "For example"}
+                ? t("Suggested by Gemini for this plant")
+                : t("For example")}
           </span>
           <div
             className="flex flex-wrap gap-1.5"
@@ -176,7 +177,7 @@ export function ScenarioChat({
                   }}
                 />
               ))}
-              <span className="sr-only">Working on it</span>
+              <span className="sr-only">{t("Working on it")}</span>
             </li>
           )}
         </ol>
@@ -187,7 +188,7 @@ export function ScenarioChat({
         className="flex items-end gap-2 rounded-[22px] border border-ink bg-card p-1.5 pl-3 shadow-hard-sm transition-shadow focus-within:shadow-hard"
       >
         <label htmlFor="scenario-chat" className="sr-only">
-          Describe the scenario in words
+          {t("Describe the scenario in words")}
         </label>
         <textarea
           id="scenario-chat"
@@ -204,12 +205,12 @@ export function ScenarioChat({
               submit();
             }
           }}
-          placeholder="What is this shift up against?"
+          placeholder={t("What is this shift up against?")}
           className="max-h-32 min-h-9 flex-1 resize-none self-center bg-transparent py-1.5 text-sm outline-none field-sizing-content placeholder:text-muted-foreground/80"
         />
         <motion.button
           type="submit"
-          aria-label="Send to the AI"
+          aria-label={t("Send to the AI")}
           disabled={!draft.trim() || busy}
           whileTap={{ scale: motionTokens.scale.press }}
           className="grid size-9 shrink-0 place-items-center rounded-full border border-ink bg-primary text-[#14140f] outline-none transition-opacity hover:shadow-hard-sm focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:opacity-40 disabled:hover:shadow-none"
@@ -233,7 +234,10 @@ function Proposal({
   onDismiss: (message: string) => void;
 }) {
   const { changes, briefing, notModelled } = message.proposal!;
-  const show = (field: keyof typeof FIELD_LABELS, value?: number | string | null) =>
+  const show = (
+    field: keyof typeof FIELD_LABELS,
+    value?: number | string | null,
+  ) =>
     value === undefined || value === null
       ? "not set"
       : FIELD_LABELS[field].show(value, unit);
@@ -270,13 +274,15 @@ function Proposal({
       )}
       {briefing !== null && (
         <div className="text-xs">
-          <strong className="text-[13px]">Crew briefing</strong>
+          <strong className="text-[13px]">{t("Crew briefing")}</strong>
           <p className="text-muted-foreground">{briefing}</p>
         </div>
       )}
       {notModelled.length > 0 && (
         <div className="text-xs">
-          <strong className="text-[13px] text-warning">Not modelled yet</strong>
+          <strong className="text-[13px] text-warning">
+            {t("Not modelled yet")}
+          </strong>
           <ul className="list-disc pl-4 text-muted-foreground">
             {notModelled.map((item) => (
               <li key={item}>{item}</li>
@@ -290,11 +296,11 @@ function Proposal({
             <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
               {message.decided === "accepted" ? (
                 <>
-                  <CheckIcon className="size-3.5 text-success" /> Applied to
-                  the scenario
+                  <CheckIcon className="size-3.5 text-success" /> Applied to the
+                  scenario
                 </>
               ) : (
-                "Dismissed"
+                t("Dismissed")
               )}
             </span>
           ) : (
@@ -304,14 +310,14 @@ function Proposal({
                 onClick={() => onAccept(message.id)}
                 className="flex items-center gap-1 rounded-full border border-ink bg-primary px-2.5 py-0.5 text-xs font-semibold text-[#14140f] outline-none hover:shadow-hard-sm focus-visible:ring-[3px] focus-visible:ring-ring/40"
               >
-                <CheckIcon className="size-3" /> Accept
+                <CheckIcon className="size-3" /> {t("Accept")}
               </button>
               <button
                 type="button"
                 onClick={() => onDismiss(message.id)}
                 className="flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground outline-none hover:border-ink hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
               >
-                <XIcon className="size-3" /> Dismiss
+                <XIcon className="size-3" /> {t("Dismiss")}
               </button>
             </>
           )}

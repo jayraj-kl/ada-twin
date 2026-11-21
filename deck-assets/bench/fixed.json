@@ -1,0 +1,50 @@
+{
+  "fixes": [
+    "Add one more unit to Boilers",
+    "Halve repair time at Boilers"
+  ],
+  "standardRules": {
+    "partsShipped": {
+      "mean": 242.8,
+      "min": 186,
+      "max": 297
+    },
+    "averageWip": {
+      "mean": 14.3,
+      "min": 10.5,
+      "max": 16.8
+    },
+    "boilersDownPct": {
+      "mean": 20.3,
+      "min": 8.4,
+      "max": 38.5
+    },
+    "partsScrapped": {
+      "mean": 5.1,
+      "min": 1,
+      "max": 11
+    }
+  },
+  "withBestFixes": {
+    "partsShipped": {
+      "mean": 304.6,
+      "min": 261,
+      "max": 336
+    },
+    "averageWip": {
+      "mean": 9.9,
+      "min": 7.6,
+      "max": 12.7
+    },
+    "boilersDownPct": {
+      "mean": 8.5,
+      "min": 2.9,
+      "max": 14.8
+    },
+    "partsScrapped": {
+      "mean": 6.1,
+      "min": 2,
+      "max": 12
+    }
+  }
+}

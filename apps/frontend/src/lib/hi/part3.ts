@@ -1,0 +1,198 @@
+// Hindi, part 3: the twin step's view, welcome and workspace, the plant
+// photos and 3D world, the report's citations, the design chat and charts.
+export const PART3: Record<string, string> = {
+  "e.g. Feed pumps": "जैसे: फ़ीड पंप",
+  "Add machine": "मशीन जोड़ें",
+  "List each machine on the floor.": "फ़्लोर की हर मशीन लिखें।",
+  "Then press": "फिर दबाएँ",
+  "Find them in the photo": "इन्हें तस्वीर में खोजें",
+  "and we pin them in the 3D world. Pin any we miss by hand, and click a pin to move it.":
+    "और हम इन्हें 3D दुनिया में पिन कर देंगे। जो छूट जाएँ उन्हें हाथ से पिन करें, और पिन हिलाने के लिए उस पर क्लिक करें।",
+  "{0} of {1} placed": "{1} में से {0} रखी गईं",
+  "Added by a redesign you applied. Pin it where it will stand.":
+    "आपके लागू किए रीडिज़ाइन से जोड़ी गई। इसे वहाँ पिन करें जहाँ यह खड़ी होगी।",
+  "New · from redesign": "नई · रीडिज़ाइन से",
+  "Options for {0}": "{0} के विकल्प",
+  "Material flow": "माल प्रवाह",
+  "{0} nodes · {1} links{2}": "{0} नोड · {1} कड़ियाँ{2}",
+  Edit: "बदलें",
+  "Draft the flow": "प्रवाह का मसौदा बनाएँ",
+  "Add your machines first; each one becomes a node here.":
+    "पहले अपनी मशीनें जोड़ें; हर एक यहाँ एक नोड बनेगी।",
+  "Open the machines panel": "मशीनों का पैनल खोलें",
+  "Step 2": "चरण 2",
+  "How to use this view": "यह दृश्य कैसे इस्तेमाल करें",
+  "List your machines, then place them.": "अपनी मशीनें लिखें, फिर उन्हें रखें।",
+  "We look for them in your photo and pin them in the 3D world. Pin any we miss by hand, and click a pin to move it.":
+    "हम इन्हें आपकी तस्वीर में खोजकर 3D दुनिया में पिन करते हैं। जो छूट जाएँ उन्हें हाथ से पिन करें, और पिन हिलाने के लिए उस पर क्लिक करें।",
+  "W / S · move the camera": "W / S · कैमरा आगे-पीछे करें",
+  "Drag · look around": "खींचें · चारों ओर देखें",
+  "Wheel · zoom": "व्हील · ज़ूम",
+  "Esc · cancel or close the panel": "Esc · रद्द करें या पैनल बंद करें",
+  View: "दृश्य",
+  "Click where": "वहाँ क्लिक करें जहाँ",
+  "really is.": "असल में है।",
+  "Remove this pin": "यह पिन हटाएँ",
+  "is.": "है।",
+  "Add a machine first.": "पहले एक मशीन जोड़ें।",
+  "{0} of {1} placed.": "{1} में से {0} रखी गईं।",
+  "Machines ·": "मशीनें ·",
+  "Confirm the twin": "ट्विन की पुष्टि करें",
+  "Machines · {0}": "मशीनें · {0}",
+  "Setting up your workspace…": "आपका वर्कस्पेस तैयार हो रहा है…",
+  "Warming up the simulator…": "सिम्युलेटर तैयार हो रहा है…",
+  "Almost there…": "बस हो गया…",
+  "Hey {0}, welcome in.": "नमस्ते {0}, स्वागत है।",
+  "Your avatar": "आपका अवतार",
+  "Try another avatar": "दूसरा अवतार आज़माएँ",
+  "Edit your profile": "अपनी प्रोफ़ाइल बदलें",
+  "What should we call you?": "हम आपको क्या कहकर बुलाएँ?",
+  "Change your name or roll a new avatar.": "अपना नाम बदलें या नया अवतार चुनें।",
+  "Just a name for now. Roll the dice for a different face.":
+    "अभी बस एक नाम। दूसरे चेहरे के लिए पासा फेंकें।",
+  "Your name": "आपका नाम",
+  "e.g. Jay": "जैसे: जय",
+  "Give this project a new name.": "इस प्रोजेक्ट को नया नाम दें।",
+  "Name the plant or line you are twinning. You can change it later.":
+    "उस प्लांट या लाइन का नाम लिखें जिसका आप ट्विन बना रहे हैं। इसे बाद में बदल सकते हैं।",
+  "Project name": "प्रोजेक्ट का नाम",
+  "e.g. Pune boiler hall": "जैसे: पुणे बॉयलर हॉल",
+  "The project could not be created: {0}": "प्रोजेक्ट नहीं बन सका: {0}",
+  "Step {0} of {1} · {2}": "चरण {0} / {1} · {2}",
+  "Edited {0}": "{0} को बदला",
+  Open: "खोलें",
+  Rename: "नाम बदलें",
+  'Delete "{0}" and everything saved in it?':
+    '"{0}" और इसमें सहेजा सब कुछ हटाएँ?',
+  Delete: "हटाएँ",
+  Hey: "नमस्ते",
+  "Your workspace is ready. Start your first twin.":
+    "आपका वर्कस्पेस तैयार है। अपना पहला ट्विन शुरू करें।",
+  "{0} {1} in your workspace.": "आपके वर्कस्पेस में {0} {1}।",
+  "New project": "नया प्रोजेक्ट",
+  "Create your first project": "अपना पहला प्रोजेक्ट बनाएँ",
+  "One project per plant, hall or line": "हर प्लांट, हॉल या लाइन का एक प्रोजेक्ट",
+  "AI illustration · not to scale": "AI चित्र · माप के अनुसार नहीं",
+  "{0} as it is": "{0} जैसा अभी है",
+  "Cutting the view out of your panorama…": "आपके पैनोरमा से दृश्य काट रहे हैं…",
+  "Wipe between the photo and the drawing": "तस्वीर और चित्र के बीच स्लाइड करें",
+  Now: "अभी",
+  Redesign: "रीडिज़ाइन",
+  Photos: "तस्वीरें",
+  "Drag across the photo to compare. Every drawing carries Google's SynthID watermark.":
+    "तुलना के लिए तस्वीर पर खींचें। हर चित्र पर Google का SynthID वॉटरमार्क होता है।",
+  Download: "डाउनलोड",
+  "Nano Banana draws the redesign into this photo. The request below is written from your changes: edit it, then send it.":
+    "Nano Banana रीडिज़ाइन को इस तस्वीर में बनाता है। नीचे का अनुरोध आपके बदलावों से लिखा गया है: इसे बदलें, फिर भेजें।",
+  "Not in your redesign.": "आपके रीडिज़ाइन में नहीं।",
+  "Measure it in Results": "नतीजे में इसे मापें",
+  "before you plan on it.": "इस पर योजना बनाने से पहले।",
+  "Use drawing {0}": "चित्र {0} इस्तेमाल करें",
+  "No drawing": "कोई चित्र नहीं",
+  "Drawing… this takes 10 to 30 seconds.": "बना रहे हैं… इसमें 10 से 30 सेकंड लगते हैं।",
+  "Tell Nano Banana what to draw": "Nano Banana को बताएँ क्या बनाना है",
+  "This photo has reached its limit of messages":
+    "इस तस्वीर के संदेशों की सीमा पूरी हो गई है",
+  "Change the drawing, e.g. make the new tank grey, or move it to the left wall":
+    "चित्र बदलें, जैसे: नया टैंक स्लेटी करें, या उसे बाईं दीवार पर ले जाएँ",
+  "What to draw into this photo": "इस तस्वीर में क्या बनाना है",
+  Drawings: "चित्र",
+  "{0} on Vertex AI": "Vertex AI पर {0}",
+  "Show it in my photo": "मेरी तस्वीर में दिखाएँ",
+  "Putting the drawings back into your panorama…":
+    "चित्रों को वापस आपके पैनोरमा में लगा रहे हैं…",
+  "Saving the panorama…": "पैनोरमा सहेज रहे हैं…",
+  "Sending it to World Labs…": "World Labs को भेज रहे हैं…",
+  "The redesign in 3D": "3D में रीडिज़ाइन",
+  "World Labs Marble": "World Labs Marble",
+  "The panorama the 3D world was built from": "वह पैनोरमा जिससे 3D दुनिया बनी",
+  "Drag to look around. Built from your panorama with the drawings put back in; your twin keeps its own world.":
+    "चारों ओर देखने के लिए खींचें। चित्रों वाले आपके पैनोरमा से बनी; आपका ट्विन अपनी दुनिया रखता है।",
+  "The panorama World Labs built the 3D world from: your photo with the drawings put back in.":
+    "वह पैनोरमा जिससे World Labs ने 3D दुनिया बनाई: चित्रों के साथ आपकी तस्वीर।",
+  "Building the 3D world…": "3D दुनिया बन रही है…",
+  "Started {0} min ago. It usually takes 10–12 minutes; you can leave this page and come back.":
+    "{0} मिनट पहले शुरू हुआ। आम तौर पर 10–12 मिनट लगते हैं; आप यह पेज छोड़कर बाद में आ सकते हैं।",
+  "Turns the approved drawings into a walkable 3D splat: each drawing is put back into your panorama where it was cut from, and World Labs builds a world from it.":
+    "मंज़ूर किए चित्रों को घूमने लायक 3D स्प्लैट में बदलता है: हर चित्र आपके पैनोरमा में वहीं लगाया जाता है जहाँ से काटा गया था, और World Labs उससे दुनिया बनाता है।",
+  "This takes 10–12 minutes on average": "इसमें औसतन 10–12 मिनट लगते हैं",
+  ", and each world uses World Labs credits (about US$1.20–2.40).":
+    ", और हर दुनिया World Labs क्रेडिट खर्च करती है (लगभग US$1.20–2.40)।",
+  "The 3D world could not be built": "3D दुनिया नहीं बन सकी",
+  "Approve a drawing on the right first": "पहले दाईं ओर एक चित्र मंज़ूर करें",
+  "Draw the changes with Nano Banana on the right and pick the one you like for each photo first.":
+    "पहले दाईं ओर Nano Banana से बदलाव बनाएँ और हर तस्वीर के लिए अपनी पसंद का चित्र चुनें।",
+  "Not found in this run's numbers": "इस रन के आँकड़ों में नहीं मिला",
+  "{0}, without it: {1} {2}/shift": "{0}, इसके बिना: {1} {2}/शिफ्ट",
+  "{0}, on its own: {1} {2}/shift": "{0}, अकेले: {1} {2}/शिफ्ट",
+  "Before the changes: {0} {1}/shift": "बदलावों से पहले: {0} {1}/शिफ्ट",
+  "With the changes: {0} {1}/shift": "बदलावों के साथ: {0} {1}/शिफ्ट",
+  "Gain with the changes: {0} {1}/shift": "बदलावों से बढ़त: {0} {1}/शिफ्ट",
+  "Gain over before: {0}%": "पहले से बढ़त: {0}%",
+  "The changes' own gains added up: {0} {1}/shift":
+    "बदलावों की अपनी बढ़त का जोड़: {0} {1}/शिफ्ट",
+  "Number of changes: {0}": "बदलावों की संख्या: {0}",
+  "{0}-hour shift": "{0}-घंटे की शिफ्ट",
+  "From the scenario": "परिदृश्य से",
+  'From the change "{0}"': 'बदलाव "{0}" से',
+  'Cost of "{0}": {1}': '"{0}" की लागत: {1}',
+  "{0} {1} per shift": "प्रति शिफ्ट {0} {1}",
+  "under {0} {1} in progress": "प्रगति में {0} {1} से कम",
+  "no station down over {0}%": "कोई स्टेशन {0}% से ज़्यादा बंद नहीं",
+  "{0} has no pin in the world": "{0} का दुनिया में कोई पिन नहीं",
+  "Neither end of the link has a pin in the world":
+    "कड़ी के किसी भी सिरे का दुनिया में पिन नहीं",
+  "Neither machine beside it has a pin in the world":
+    "इसके पास की किसी मशीन का दुनिया में पिन नहीं",
+  "Nothing it serves has a pin in the world":
+    "जिनकी यह मदद करता है उनमें किसी का दुनिया में पिन नहीं",
+  "The buffer has no machine with a pin next to it":
+    "बफ़र के पास पिन वाली कोई मशीन नहीं",
+  "A change to how it runs, not to what you can see":
+    "यह चलने के तरीके का बदलाव है, दिखने वाली चीज़ का नहीं",
+  "More crews: nothing new to see on the floor":
+    "ज़्यादा टीमें: फ़्लोर पर देखने को कुछ नया नहीं",
+  "Nothing to see": "देखने को कुछ नहीं",
+  "This browser cannot read images": "यह ब्राउज़र तस्वीरें नहीं पढ़ सकता",
+  "The plant's panorama could not be loaded": "प्लांट का पैनोरमा लोड नहीं हो सका",
+  "A drawing could not be loaded": "एक चित्र लोड नहीं हो सका",
+  "The panorama could not be made": "पैनोरमा नहीं बन सका",
+  "Design assistant": "डिज़ाइन सहायक",
+  Clear: "साफ़ करें",
+  "Working on it": "काम चल रहा है",
+  "Tell the AI what you would change in the plant":
+    "AI को बताएँ कि आप प्लांट में क्या बदलेंगे",
+  "What would you change?": "आप क्या बदलेंगे?",
+  "Send to the AI": "AI को भेजें",
+  "Parts per shift it adds to the redesign, on standard rules":
+    "मानक नियमों पर, यह रीडिज़ाइन में प्रति शिफ्ट कितने पुर्ज़े जोड़ता है",
+  "does not fit": "फ़िट नहीं होता",
+  Keep: "रखें",
+  Drop: "हटाएँ",
+  "Keep all {0}": "सभी {0} रखें",
+  "Picked changes": "चुने गए बदलाव",
+  "{0} picked {1}": "{0} चुने गए {1}",
+  "One by one they add up to": "एक-एक करके इनका जोड़ है",
+  "Together they add up the same.": "साथ में भी जोड़ उतना ही है।",
+  "Together they do {0} better: they help each other.":
+    "साथ में ये {0} बेहतर करते हैं: एक-दूसरे की मदद करते हैं।",
+  "Together they do {0} less: they fix the same problem.":
+    "साथ में ये {0} कम करते हैं: एक ही समस्या ठीक करते हैं।",
+  "Measured on standard rules. Press Run with changes at the top to see standard rules and your agents with them, on a copy of your twin. They can be applied once that run is done; your twin changes only when you apply them.":
+    "मानक नियमों पर मापा गया। ऊपर \"बदलावों के साथ चलाएँ\" दबाएँ ताकि आपके ट्विन की एक कॉपी पर मानक नियम और आपके एजेंट इनके साथ दिखें। वह रन पूरा होने पर इन्हें लागू किया जा सकता है; आपका ट्विन तभी बदलता है जब आप लागू करते हैं।",
+  "The run with your changes failed: {0}": "आपके बदलावों वाला रन विफल रहा: {0}",
+  "Running with these changes…{0}": "इन बदलावों के साथ चला रहे हैं…{0}",
+  "The results on the right show your plant with these changes.":
+    "दाईं ओर के नतीजे इन बदलावों के साथ आपका प्लांट दिखाते हैं।",
+  "The table above now shows your plant with these changes.":
+    "ऊपर की तालिका अब इन बदलावों के साथ आपका प्लांट दिखाती है।",
+  "Your picks changed since the last run with changes.":
+    "पिछले बदलावों वाले रन के बाद आपकी पसंद बदल गई है।",
+  "The shift so far": "अब तक की शिफ्ट",
+  "Hide the charts": "चार्ट छिपाएँ",
+  "Show the charts": "चार्ट दिखाएँ",
+  Shipped: "भेजे गए",
+  "Standard rules": "मानक नियम",
+  "Target pace": "लक्ष्य की रफ़्तार",
+  "{0} {1} shipped by {2}": "{2} तक {0} {1} भेजे गए",
+};

@@ -29,7 +29,17 @@ import { NumberField } from "@/components/ui/number-field";
 import { WorldView } from "@/components/viewer/WorldView";
 import { springs } from "@/lib/motion";
 import { useProjectId, useProjectPath } from "@/lib/projects";
-import { getState, setState } from "@/lib/project-store";
+import {
+  getState,
+  setState,
+  useField,
+  useStateValue,
+} from "@/lib/project-store";
+import { CostTab } from "@/results/cost-tab";
+import { optionLabel } from "@/results/options";
+import { DocumentsTab } from "@/results/documents-tab";
+import { useCitationChecks } from "@/twin/Citation";
+import { type AttachedPack, DEMO_PACK_KEY } from "@/twin/demo-pack";
 import { ui } from "@/lib/ui";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
@@ -45,12 +55,12 @@ import {
 import { costKey, signed } from "@/results/format";
 import { byShownGain, shownGain } from "@/results/latest";
 import { usePlantScenario } from "@/scenario/plant";
-import { PickedChanges, type Picks, type TrialView } from "@/results/PickedChanges";
 import {
-  type Trial,
-  redesignStatus,
-  runId,
-} from "@/results/redesign-status";
+  PickedChanges,
+  type Picks,
+  type TrialView,
+} from "@/results/PickedChanges";
+import { type Trial, redesignStatus, runId } from "@/results/redesign-status";
 import { ShiftCharts } from "@/results/ShiftCharts";
 import { ChangesTab, type RedesignVersion, ResultsTab } from "@/results/tabs";
 import { type Series, timelineOf } from "@/results/timeline";
@@ -104,6 +114,7 @@ import {
   measureChanges,
 } from "@/twin/recommend";
 
+import { t } from "@/lib/i18n";
 const NO_MACHINES: SavedMachine[] = [];
 const NO_CHANGES: Change[] = [];
 const NO_HISTORY: RedesignVersion[] = [];
@@ -119,7 +130,9 @@ interface Scouted {
 }
 
 /** The crew's playbook replayed on each of the run's days. */
-function replayCrew(run: StoredRun & { playbook: NonNullable<StoredRun["playbook"]> }) {
+function replayCrew(
+  run: StoredRun & { playbook: NonNullable<StoredRun["playbook"]> },
+) {
   return simulateShiftDays(
     {
       graph: run.graph,
@@ -140,7 +153,7 @@ const CHAT_LIMIT = 40;
 const PANE_PX = 440;
 
 type View = "baseline" | "redesign";
-type Tab = "results" | "changes";
+type Tab = "results" | "changes" | "cost" | "documents";
 
 interface Live {
   horizon: number;
@@ -151,12 +164,12 @@ interface Live {
 }
 
 const PARAM_NOTE: Record<string, string> = {
-  cycleTime: "new cycle time",
+  cycleTime: t("new cycle time"),
   cycleTimeVariation: "steadier",
-  mtbf: "fails less often",
+  mtbf: t("fails less often"),
   mttr: "faster repairs",
   scrapRate: "less scrap",
-  interArrival: "new arrival rate",
+  interArrival: t("new arrival rate"),
 };
 
 /** What each changed machine's pin says about the redesign. */
@@ -179,15 +192,15 @@ function pinNotes(changes: Change[], edges: Flow["links"]) {
       add(diff.to, `${diff.name} (${diff.capacity}) before`);
     } else if (diff.type === "insert-station") {
       // New equipment has no pin yet; the machine after it carries the note.
-      add(diff.to, `new ${diff.name.toLowerCase()} before`);
+      add(diff.to, t("new {0} before", { 0: diff.name.toLowerCase() }));
     } else if (diff.type === "add-support") {
       for (const id of diff.neededBy) {
-        add(id, `needs new ${diff.name.toLowerCase()}`);
+        add(id, t("needs new {0}", { 0: diff.name.toLowerCase() }));
       }
     } else if (diff.type === "resize-buffer") {
       // A buffer has no pin; the machine it feeds carries the note.
       const fed = edges.find(({ from }) => from === diff.buffer)?.to;
-      if (fed) add(fed, `buffer before → ${diff.capacity}`);
+      if (fed) add(fed, t("buffer before → {0}", { 0: diff.capacity }));
     } else {
       add(diff.node, PARAM_NOTE[diff.param] ?? "changed");
     }
@@ -231,10 +244,10 @@ function Decision({ record }: { record: DecisionRecord }) {
           {clock(record.time)}
         </span>
       </div>
-      <div>{record.options[record.choice]}</div>
+      <div>{optionLabel(record.options[record.choice] ?? "")}</div>
       <div className="text-white/60 italic">
         {record.fallback
-          ? `Standard rule used: ${record.fallback}`
+          ? t("Standard rule used: {0}", { 0: record.fallback })
           : `“${record.reason}”`}
       </div>
     </li>
@@ -274,6 +287,16 @@ export default function ResultsPage() {
   const [view, setView] = useState<View>("baseline");
   const [tab, setTab] = useState<Tab>("results");
   const [sheet, setSheet] = useState(false);
+  // A demo world's documents, and whether its figures' citations hold.
+  const pack = useStateValue(projectId, DEMO_PACK_KEY) as
+    AttachedPack | undefined;
+  const savedMachines = useField(projectId, "machines") as
+    SavedMachine[] | null | undefined;
+  const packMachines = useMemo(
+    () => (pack && Array.isArray(savedMachines) ? savedMachines : []),
+    [pack, savedMachines],
+  );
+  const citationVerdicts = useCitationChecks(projectId, packMachines);
   const [showDecisions, setShowDecisions] = useState(false);
   // Phones have little room over the world, so the charts start folded.
   const [chartsOpen, setChartsOpen] = useState(desktop);
@@ -539,13 +562,14 @@ export default function ResultsPage() {
   // Saved with the project; it has loaded before this step shows.
   useEffect(() => {
     setChat(
-      (getState(projectId, DESIGN_CHAT_KEY) as DesignChatMessage[] | undefined) ??
-        [],
+      (getState(projectId, DESIGN_CHAT_KEY) as
+        DesignChatMessage[] | undefined) ?? [],
     );
     setChatLoaded(true);
   }, [projectId]);
   useEffect(() => {
-    if (chatLoaded) setState(projectId, DESIGN_CHAT_KEY, chat.slice(-CHAT_LIMIT));
+    if (chatLoaded)
+      setState(projectId, DESIGN_CHAT_KEY, chat.slice(-CHAT_LIMIT));
   }, [chat, chatLoaded, projectId]);
 
   // Each measurement is the same shift on standard rules, so a set of
@@ -556,7 +580,7 @@ export default function ResultsPage() {
   }, [run]);
   const measureOnce = useCallback(
     (changes: Change[]) => {
-      if (!run) return Promise.reject(new Error("No run"));
+      if (!run) return Promise.reject(new Error(t("No run")));
       const key = JSON.stringify(
         changes.map(({ diffs, extraCrews }) => [diffs, extraCrews]),
       );
@@ -615,7 +639,10 @@ export default function ResultsPage() {
           if (cancelled) return;
           setRedesign(null);
           setDesignProblem(
-            `The redesign cannot be simulated: ${error instanceof Error ? error.message : String(error)}. Drop the change that no longer fits.`,
+            t(
+              "The redesign cannot be simulated: {0}. Drop the change that no longer fits.",
+              { 0: error instanceof Error ? error.message : String(error) },
+            ),
           );
         },
       )
@@ -768,7 +795,9 @@ export default function ResultsPage() {
             setTrialWriting(false);
             setTrialPlaybookProblem(problem);
             setTrial((current) =>
-              current?.key === key ? { ...current, run: withPlaybook } : current,
+              current?.key === key
+                ? { ...current, run: withPlaybook }
+                : current,
             );
             if (!withPlaybook.playbook) return;
             void replayCrew({
@@ -806,7 +835,7 @@ export default function ResultsPage() {
         : [
             {
               at: Date.now() - 1,
-              label: kept.length > 0 ? "Accepted earlier" : "No changes",
+              label: kept.length > 0 ? t("Accepted earlier") : t("No changes"),
               changes: kept,
             },
           ];
@@ -825,7 +854,7 @@ export default function ResultsPage() {
         [...kept, ...fresh],
         fresh.length === 1
           ? `Kept: ${fresh[0]!.title}`
-          : `Kept ${fresh.length} changes`,
+          : t("Kept {0} changes", { 0: fresh.length }),
       );
     }
     setChat((current) =>
@@ -911,16 +940,29 @@ export default function ResultsPage() {
         changes: helping,
         note:
           found.suggestions.length === 0
-            ? "The AI found nothing missing that this run calls for."
+            ? t("The AI found nothing missing that this run calls for.")
             : helping.length === 0
-              ? `The AI suggested ${found.suggestions.map(({ title }) => title.toLowerCase()).join(", ")}, but none helped when simulated.`
+              ? t("The AI suggested {0}, but none helped when simulated.", {
+                  0: found.suggestions
+                    .map(({ title }) => title.toLowerCase())
+                    .join(", "),
+                })
               : unhelpful > 0
-                ? `${unhelpful} more ${unhelpful === 1 ? "idea" : "ideas"} did not help when simulated, so ${unhelpful === 1 ? "it is" : "they are"} left out.`
+                ? t(
+                    "{0} more {1} did not help when simulated, so {2} left out.",
+                    {
+                      0: unhelpful,
+                      1: unhelpful === 1 ? "idea" : "ideas",
+                      2: unhelpful === 1 ? "it is" : "they are",
+                    },
+                  )
                 : "",
       });
     } catch (error) {
       setScoutProblem(
-        `Could not look for new equipment: ${error instanceof Error ? error.message : String(error)}`,
+        t("Could not look for new equipment: {0}", {
+          0: error instanceof Error ? error.message : String(error),
+        }),
       );
     } finally {
       setScouting(false);
@@ -951,7 +993,7 @@ export default function ResultsPage() {
             ? `${text} (Proposed: ${proposed
                 .map(
                   ({ id, title }) =>
-                    `${title}, ${decided?.[id] ?? "not decided yet"}`,
+                    `${title}, ${decided?.[id] ?? t("not decided yet")}`,
                 )
                 .join("; ")})`
             : text,
@@ -1035,8 +1077,8 @@ export default function ResultsPage() {
         projectId,
         APPLIED_KEY,
         [
-          ...((getState(projectId, APPLIED_KEY) as AppliedRedesign[] | undefined) ??
-            []),
+          ...((getState(projectId, APPLIED_KEY) as
+            AppliedRedesign[] | undefined) ?? []),
           record,
         ].slice(-KEPT_APPLIED),
       );
@@ -1236,22 +1278,28 @@ export default function ResultsPage() {
 
   const runDisabled = !ready || Boolean(live);
   const chatDisabled = !run
-    ? "Run the shift first, then redesign it here"
+    ? t("Run the shift first, then redesign it here")
     : live
-      ? "Wait for the shift to finish"
+      ? t("Wait for the shift to finish")
       : undefined;
 
   const tabs = (
     <div
       role="tablist"
-      aria-label="Results"
+      aria-label={t("Results")}
       data-tour="results-tabs"
       className="flex gap-1 rounded-full bg-muted p-1"
     >
       {(
         [
-          ["results", "Results"],
-          ["changes", `Changes · ${kept.length}`],
+          ["results", t("Results")],
+          ["changes", t("Changes · {0}", { 0: kept.length })],
+          ...(run ? ([["cost", t("Cost")]] as const) : []),
+          ...(pack
+            ? ([
+                ["documents", t("Docs · {0}", { 0: pack.documents.length })],
+              ] as const)
+            : []),
         ] as const
       ).map(([key, label]) => (
         <button
@@ -1264,7 +1312,7 @@ export default function ResultsPage() {
             if (!desktop) setSheet(true);
           }}
           className={cn(
-            "relative flex-1 rounded-full px-3 py-1.5 text-[13px] font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
+            "relative flex-1 rounded-full px-2 py-1.5 text-[13px] font-semibold whitespace-nowrap outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
             tab === key
               ? "text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -1283,70 +1331,89 @@ export default function ResultsPage() {
     </div>
   );
 
-  const paneBody = run ? (
-    tab === "results" ? (
-      <ResultsTab
+  const paneBody =
+    tab === "cost" && run ? (
+      <CostTab
+        projectId={projectId}
         run={run}
-        redesign={redesign}
-        measuring={measuring}
-        crewDays={crewDays}
-        writingPlaybook={writingPlaybook}
-        playbookProblem={playbookProblem}
-        showRedesign={view === "redesign"}
-        suggestions={suggestionRows ?? null}
-        problem={designProblem}
-        onAdd={addSuggestion}
-        onTop={onTop}
-        picks={picks}
-        trial={trialState}
-        onRemove={(change) => dropKept(change.id)}
-        scouted={scoutedRows ?? null}
-        scouting={scouting}
-        scoutNote={
-          scoutProblem ||
-          (run && scoutedFor?.run === runId(run) ? scoutedFor.note : "")
-        }
-        onScout={() => void scout()}
+        runKey={runId(run)}
+        days={daysOf(run).length}
+        unit={t(run.scenario.unit ?? "parts")}
+        plant={pack?.plant ?? "the plant"}
+        hasAgents={run.agents.length > 0}
       />
-    ) : (
-      <ChangesTab
-        changes={kept}
-        alone={alone}
-        together={kept.length === 0 ? 0 : gain}
-        costs={costs}
-        currency={currency}
-        pricing={pricing}
-        costProblem={costProblem}
-        history={history}
-        onCurrency={setCurrency}
-        onReprice={() => {
-          setCosts(
-            Object.fromEntries(
-              Object.entries(costs).filter(
-                ([key]) => !key.startsWith(`${currency}:`),
+    ) : tab === "documents" && pack ? (
+      <DocumentsTab
+        projectId={projectId}
+        pack={pack}
+        machines={packMachines}
+        verdicts={citationVerdicts}
+      />
+    ) : run ? (
+      tab === "results" ? (
+        <ResultsTab
+          run={run}
+          redesign={redesign}
+          measuring={measuring}
+          crewDays={crewDays}
+          writingPlaybook={writingPlaybook}
+          playbookProblem={playbookProblem}
+          showRedesign={view === "redesign"}
+          suggestions={suggestionRows ?? null}
+          problem={designProblem}
+          onAdd={addSuggestion}
+          onTop={onTop}
+          picks={picks}
+          trial={trialState}
+          onRemove={(change) => dropKept(change.id)}
+          scouted={scoutedRows ?? null}
+          scouting={scouting}
+          scoutNote={
+            scoutProblem ||
+            (run && scoutedFor?.run === runId(run) ? scoutedFor.note : "")
+          }
+          onScout={() => void scout()}
+        />
+      ) : (
+        <ChangesTab
+          changes={kept}
+          alone={alone}
+          together={kept.length === 0 ? 0 : gain}
+          costs={costs}
+          currency={currency}
+          pricing={pricing}
+          costProblem={costProblem}
+          history={history}
+          onCurrency={setCurrency}
+          onReprice={() => {
+            setCosts(
+              Object.fromEntries(
+                Object.entries(costs).filter(
+                  ([key]) => !key.startsWith(`${currency}:`),
+                ),
               ),
-            ),
-          );
-          setRepricing(repricing + 1);
-        }}
-        onDrop={dropKept}
-        onRestore={(index) =>
-          commit(history[index]!.changes, `Restored v${index + 1}`)
-        }
-      />
-    )
-  ) : (
-    <div className="flex flex-col gap-2 py-6 text-center">
-      <BoxesIcon className="mx-auto size-8 text-muted-foreground" />
-      <h2 className="font-semibold">
-        {runLoaded ? "No shift has run yet" : "Loading…"}
-      </h2>
-      <p className="text-sm text-muted-foreground">
-        Run the shift to see where time goes, what to change, and to redesign
-        the plant with the assistant.
-      </p>
-    </div>
-  );
+            );
+            setRepricing(repricing + 1);
+          }}
+          onDrop={dropKept}
+          onRestore={(index) =>
+            commit(history[index]!.changes, `Restored v${index + 1}`)
+          }
+        />
+      )
+    ) : (
+      <div className="flex flex-col gap-2 py-6 text-center">
+        <BoxesIcon className="mx-auto size-8 text-muted-foreground" />
+        <h2 className="font-semibold">
+          {runLoaded ? t("No shift has run yet") : t("Loading…")}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {t(
+            "Run the shift to see where time goes, what to change, and to redesign the plant with the assistant.",
+          )}
+        </p>
+      </div>
+    );
 
   const chatBox = (
     <DesignChat
@@ -1383,14 +1450,14 @@ export default function ResultsPage() {
         <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-2 p-3 sm:p-4">
           <div
             role="tablist"
-            aria-label="Plant"
+            aria-label={t("Plant")}
             data-tour="plant-view"
             className="pointer-events-auto flex rounded-full border border-ink bg-card p-1 shadow-hard-sm"
           >
             {(
               [
-                ["baseline", "Your plant"],
-                ["redesign", `Redesign · ${kept.length}`],
+                ["baseline", t("Your plant")],
+                ["redesign", t("Redesign · {0}", { 0: kept.length })],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -1426,9 +1493,11 @@ export default function ResultsPage() {
               <Link
                 to={path("plant")}
                 className={cn(ui.button, "h-9 bg-card")}
-                title="The changes you applied, ranked, and drawn into your photos"
+                title={t(
+                  "The changes you applied, ranked, and drawn into your photos",
+                )}
               >
-                New plant <ArrowRightIcon />
+                {t("New plant")} <ArrowRightIcon />
               </Link>
             )}
             {kept.length > 0 && !live && (
@@ -1441,10 +1510,16 @@ export default function ResultsPage() {
                 <span
                   title={
                     tested
-                      ? "Make the redesign your twin, then see the changes ranked and drawn into your photos"
+                      ? t(
+                          "Make the redesign your twin, then see the changes ranked and drawn into your photos",
+                        )
                       : stale
-                        ? "Your twin has changed since this run: run the shift again, then run with changes."
-                        : "Run with changes first, so you see how your plant and agents do with them."
+                        ? t(
+                            "Your twin has changed since this run: run the shift again, then run with changes.",
+                          )
+                        : t(
+                            "Run with changes first, so you see how your plant and agents do with them.",
+                          )
                   }
                 >
                   <button
@@ -1452,7 +1527,7 @@ export default function ResultsPage() {
                     disabled={!tested}
                     onClick={applyRedesign}
                   >
-                    <CheckCheckIcon /> Apply to my twin
+                    <CheckCheckIcon /> {t("Apply to my twin")}
                   </button>
                 </span>
               </>
@@ -1460,15 +1535,23 @@ export default function ResultsPage() {
             {offer && (
               <span
                 title={
-                  !ready ? "Finish the twin's material flow first" : offer.why
+                  !ready
+                    ? t("Finish the twin's material flow first")
+                    : offer.why
                 }
               >
                 <button
                   className={cn(ui.button, "h-9", ui.primary)}
                   disabled={runDisabled}
-                  onClick={offer.does === "picks" ? () => void runTrial() : start}
+                  onClick={
+                    offer.does === "picks" ? () => void runTrial() : start
+                  }
                 >
-                  {run && offer.does === "shift" ? <RotateCcwIcon /> : <PlayIcon />}{" "}
+                  {run && offer.does === "shift" ? (
+                    <RotateCcwIcon />
+                  ) : (
+                    <PlayIcon />
+                  )}{" "}
                   {offer.label}
                 </button>
               </span>
@@ -1491,19 +1574,19 @@ export default function ResultsPage() {
             ) : showRedesign ? (
               <span className="rounded-full border border-white/15 bg-[#14140f]/80 px-3 py-1 text-xs text-white backdrop-blur-md">
                 {kept.length === 0
-                  ? "No changes yet: add one on the right"
+                  ? t("No changes yet: add one on the right")
                   : measuring
-                    ? "Measuring the redesign…"
-                    : "The redesign cannot be simulated"}
+                    ? t("Measuring the redesign…")
+                    : t("The redesign cannot be simulated")}
               </span>
             ) : (
               <span className="rounded-full border border-white/15 bg-[#14140f]/80 px-3 py-1 font-mono text-xs text-white backdrop-blur-md">
-                shipped {floor.shipped} · in progress {floor.wip} · scrapped{" "}
-                {floor.scrapped}
+                {t("shipped")} {floor.shipped} {t("· in progress")} {floor.wip}{" "}
+                {t("· scrapped")} {floor.scrapped}
                 {stopped.length > 0 && (
                   <span className="text-[#ff8c42]">
                     {" "}
-                    · stopped: {stopped.join(", ")}
+                    {t("· stopped:")} {stopped.join(", ")}
                   </span>
                 )}
               </span>
@@ -1556,11 +1639,11 @@ export default function ResultsPage() {
                   className="pointer-events-auto w-full max-w-[460px] rounded-2xl border border-white/15 bg-[#14140f]/85 p-3 text-white backdrop-blur-md"
                 >
                   <div className="mb-2 flex items-center justify-between text-xs font-semibold">
-                    Decisions · {decisions.length}
+                    {t("Decisions ·")} {decisions.length}
                     <button
                       type="button"
                       onClick={() => setShowDecisions(false)}
-                      aria-label="Hide the decisions"
+                      aria-label={t("Hide the decisions")}
                       className="grid size-6 place-items-center rounded-full text-white/70 outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-primary/50"
                     >
                       <ChevronDownIcon className="size-4" />
@@ -1569,8 +1652,10 @@ export default function ResultsPage() {
                   {decisions.length === 0 ? (
                     <p className="text-xs text-white/60">
                       {agents.length === 0
-                        ? "There are no agents, so every role follows standard rules."
-                        : "Decisions appear here as the agents make them."}
+                        ? t(
+                            "There are no agents, so every role follows standard rules.",
+                          )
+                        : t("Decisions appear here as the agents make them.")}
                     </p>
                   ) : (
                     <ol className="flex max-h-[min(32svh,280px)] flex-col gap-2.5 overflow-y-auto pr-1">
@@ -1594,13 +1679,16 @@ export default function ResultsPage() {
                 <>
                   <div className="flex items-center justify-between gap-2">
                     <strong className="font-mono text-sm">
-                      Simulating… {clock(liveTime)} / {clock(live.horizon)}
+                      {t("Simulating… {0} / {1}", {
+                        0: clock(liveTime),
+                        1: clock(live.horizon),
+                      })}
                     </strong>
                     <button
                       className={darkPill}
                       onClick={() => cancel.current?.abort()}
                     >
-                      Cancel
+                      {t("Cancel")}
                     </button>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/15">
@@ -1613,8 +1701,10 @@ export default function ResultsPage() {
                   </div>
                   <p className="mt-2 text-xs text-white/60">
                     {agents.length > 0
-                      ? "The agents are deciding now; each decision is a question to Gemini. The replay starts when the shift is over."
-                      : "Simulating on standard rules."}
+                      ? t(
+                          "The agents are deciding now; each decision is a question to Gemini. The replay starts when the shift is over.",
+                        )
+                      : t("Simulating on standard rules.")}
                   </p>
                 </>
               ) : run ? (
@@ -1627,7 +1717,11 @@ export default function ResultsPage() {
                         setPlaying(!playing);
                       }}
                       aria-label={
-                        playing ? "Pause" : time >= horizon ? "Replay" : "Play"
+                        playing
+                          ? t("Pause")
+                          : time >= horizon
+                            ? t("Replay")
+                            : t("Play")
                       }
                       className="grid size-8 shrink-0 place-items-center rounded-full border border-ink bg-primary text-[#14140f] outline-none focus-visible:ring-[3px] focus-visible:ring-primary/50"
                     >
@@ -1641,7 +1735,7 @@ export default function ResultsPage() {
                     </button>
                     <input
                       type="range"
-                      aria-label="Time into the shift"
+                      aria-label={t("Time into the shift")}
                       className="min-w-0 flex-1 accent-[var(--primary)]"
                       min={0}
                       max={horizon}
@@ -1658,7 +1752,7 @@ export default function ResultsPage() {
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     <label htmlFor="speed" className="sr-only">
-                      Speed
+                      {t("Speed")}
                     </label>
                     <select
                       id="speed"
@@ -1668,8 +1762,9 @@ export default function ResultsPage() {
                     >
                       {SPEEDS.map((option) => (
                         <option key={option} value={option}>
-                          {Math.round(horizon / option / 60) || 1} min for the
-                          shift
+                          {t("{0} min for the shift", {
+                            0: Math.round(horizon / option / 60) || 1,
+                          })}
                         </option>
                       ))}
                     </select>
@@ -1678,7 +1773,7 @@ export default function ResultsPage() {
                       onClick={() => setShowDecisions((open) => !open)}
                     >
                       <ListIcon className="mr-1 inline size-3.5 align-[-3px]" />
-                      Decisions · {(replayed ?? run).decisions.length}
+                      {t("Decisions ·")} {(replayed ?? run).decisions.length}
                       {showDecisions ? (
                         <ChevronDownIcon className="ml-0.5 inline size-3.5 align-[-3px]" />
                       ) : (
@@ -1686,7 +1781,7 @@ export default function ResultsPage() {
                       )}
                     </button>
                     <span className="ml-auto flex items-center gap-1.5 text-white/70">
-                      Seed
+                      {t("Seed")}
                       <NumberField
                         id="seed"
                         size="sm"
@@ -1698,9 +1793,11 @@ export default function ResultsPage() {
                       <label
                         htmlFor="days"
                         className="ml-2"
-                        title="Every average is taken over this many days, each with its own random events. Takes effect on the next run."
+                        title={t(
+                          "Every average is taken over this many days, each with its own random events. Takes effect on the next run.",
+                        )}
                       >
-                        Days
+                        {t("Days")}
                       </label>
                       <NumberField
                         id="days"
@@ -1716,11 +1813,18 @@ export default function ResultsPage() {
                 </>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <strong className="text-sm">Ready to run the shift</strong>
+                  <strong className="text-sm">
+                    {t("Ready to run the shift")}
+                  </strong>
                   <p className="text-xs text-white/70">
                     {crew.agents.length > 0
-                      ? `${crew.agents.length} agents run the floor. Each planning check-in and breakdown is a question to Gemini, so a run takes a few minutes.`
-                      : "No agents: the shift runs on standard rules in seconds."}
+                      ? t(
+                          "{0} agents run the floor. Each planning check-in and breakdown is a question to Gemini, so a run takes a few minutes.",
+                          { 0: crew.agents.length },
+                        )
+                      : t(
+                          "No agents: the shift runs on standard rules in seconds.",
+                        )}
                   </p>
                 </div>
               )}
@@ -1729,18 +1833,20 @@ export default function ResultsPage() {
                   <TriangleAlertIcon className="mt-px size-3.5 shrink-0" />
                   <span>
                     {runProblem ? (
-                      `The run failed: ${runProblem}`
+                      t("The run failed: {0}", { 0: runProblem })
                     ) : !ready ? (
                       <>
                         The twin cannot be simulated yet: finish its material
                         flow in the{" "}
                         <Link to={path("twin")} className="underline">
-                          twin step
+                          {t("twin step")}
                         </Link>
                         .
                       </>
                     ) : (
-                      "Your twin has changed since this run. Run the shift again to see it with your agents."
+                      t(
+                        "Your twin has changed since this run. Run the shift again to see it with your agents.",
+                      )
                     )}
                   </span>
                 </p>
@@ -1753,7 +1859,7 @@ export default function ResultsPage() {
       {/* Results, the redesign's changes, and the assistant. */}
       {desktop ? (
         <aside
-          aria-label="Results and redesign"
+          aria-label={t("Results and redesign")}
           className="flex shrink-0 flex-col border-l border-border bg-card text-card-foreground"
           style={{ width: PANE_PX }}
         >
@@ -1767,7 +1873,7 @@ export default function ResultsPage() {
         </aside>
       ) : (
         <motion.aside
-          aria-label="Results and redesign"
+          aria-label={t("Results and redesign")}
           layout
           transition={springs.snappy}
           className={cn(
@@ -1779,7 +1885,7 @@ export default function ResultsPage() {
             type="button"
             onClick={() => setSheet((open) => !open)}
             aria-expanded={sheet}
-            aria-label={sheet ? "Lower the panel" : "Raise the panel"}
+            aria-label={sheet ? t("Lower the panel") : t("Raise the panel")}
             className="flex justify-center pt-2.5 pb-1 outline-none"
           >
             <span className="h-1.5 w-10 rounded-full bg-border" />

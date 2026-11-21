@@ -1,5 +1,5 @@
 import type { StationStatus } from "@repo/sim";
-import { usePlantUnit } from "@/scenario/plant";
+import { usePlantUnitLabel } from "@/scenario/plant";
 import { ChartLineIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ import {
   valueAt,
 } from "./timeline";
 
+import { t } from "@/lib/i18n";
 // The charts sit on the dark glass over the world in both themes, so their
 // colours are the dark theme's.
 const SHIPPED = "var(--primary)";
@@ -26,13 +27,13 @@ const STATUS_FILL: Record<StationStatus, string> = {
   stopped: "#8a4a4a",
 };
 const STATUS_LABEL: Record<StationStatus, string> = {
-  idle: "idle",
-  running: "working",
-  blocked: "blocked",
-  preventive: "serviced",
-  down: "down",
-  repairing: "repair",
-  stopped: "stopped",
+  idle: t("idle"),
+  running: t("working"),
+  blocked: t("blocked"),
+  preventive: t("serviced"),
+  down: t("down"),
+  repairing: t("repair"),
+  stopped: t("stopped"),
 };
 const SHOWN_STATUSES: StationStatus[] = [
   "running",
@@ -79,7 +80,7 @@ export function ShiftCharts({
   open: boolean;
   onToggle: () => void;
 }) {
-  const unit = usePlantUnit();
+  const unit = usePlantUnitLabel();
   const shippedNow = valueAt(timeline.shipped, now);
   const standardNow = standard ? valueAt(standard, now) : null;
   const wipNow = valueAt(timeline.wip, now);
@@ -134,13 +135,13 @@ export function ShiftCharts({
 
   return (
     <section
-      aria-label="The shift so far"
+      aria-label={t("The shift so far")}
       className="pointer-events-auto w-full rounded-2xl border border-white/15 bg-[#14140f]/85 p-3 text-white backdrop-blur-md"
     >
       <div className="flex items-center justify-between gap-2 text-xs font-semibold">
         <span className="flex items-center gap-1.5">
           <ChartLineIcon className="size-3.5 text-primary" />
-          The shift so far
+          {t("The shift so far")}
           <span className="font-mono font-normal text-white/60">
             {clock(now)}
           </span>
@@ -149,7 +150,7 @@ export function ShiftCharts({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          aria-label={open ? "Hide the charts" : "Show the charts"}
+          aria-label={open ? t("Hide the charts") : t("Show the charts")}
           className="grid size-6 place-items-center rounded-full text-white/70 outline-none hover:text-primary focus-visible:ring-[3px] focus-visible:ring-primary/50"
         >
           {open ? (
@@ -166,18 +167,20 @@ export function ShiftCharts({
           <div>
             <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] text-white/70">
               <span>
-                <Swatch colour={SHIPPED} /> Shipped{" "}
+                <Swatch colour={SHIPPED} /> {t("Shipped")}{" "}
                 <strong className="font-mono text-white">{shippedNow}</strong>
               </span>
               {standardNow !== null && (
                 <span>
-                  <Swatch colour="rgb(255 255 255 / 0.6)" dashed /> Standard
-                  rules <span className="font-mono">{standardNow}</span>
+                  <Swatch colour="rgb(255 255 255 / 0.6)" dashed />{" "}
+                  {t("Standard rules")}{" "}
+                  <span className="font-mono">{standardNow}</span>
                 </span>
               )}
               {target !== undefined && (
                 <span>
-                  <Swatch colour="rgb(255 255 255 / 0.35)" dashed /> Target pace{" "}
+                  <Swatch colour="rgb(255 255 255 / 0.35)" dashed />{" "}
+                  {t("Target pace")}{" "}
                   <span className="font-mono">
                     {Math.round((target * Math.min(now, horizon)) / horizon)}
                   </span>
@@ -190,7 +193,11 @@ export function ShiftCharts({
                 preserveAspectRatio="none"
                 className="absolute inset-0 size-full overflow-visible"
                 role="img"
-                aria-label={`${shippedNow} ${unit} shipped by ${clock(now)}`}
+                aria-label={t("{0} {1} shipped by {2}", {
+                  0: shippedNow,
+                  1: unit,
+                  2: clock(now),
+                })}
               >
                 <line
                   x1={0}
@@ -232,7 +239,10 @@ export function ShiftCharts({
               {playhead}
             </div>
             {decisions.length > 0 && (
-              <div className="relative mt-1 h-3" aria-label="Agent decisions">
+              <div
+                className="relative mt-1 h-3"
+                aria-label={t("Agent decisions")}
+              >
                 {decisions
                   .filter((record) => record.time <= now)
                   .map((record, index) => {
@@ -262,7 +272,7 @@ export function ShiftCharts({
           {/* In progress */}
           <div>
             <div className="mb-1 text-[11px] text-white/70">
-              <Swatch colour={WIP} /> In progress{" "}
+              <Swatch colour={WIP} /> {t("In progress")}{" "}
               <strong className="font-mono text-white">{wipNow}</strong>
             </div>
             <div className="relative" style={{ height: WIP_HEIGHT }}>
@@ -271,7 +281,11 @@ export function ShiftCharts({
                 preserveAspectRatio="none"
                 className="absolute inset-0 size-full overflow-visible"
                 role="img"
-                aria-label={`${wipNow} ${unit} in progress at ${clock(now)}`}
+                aria-label={t("{0} {1} in progress at {2}", {
+                  0: wipNow,
+                  1: unit,
+                  2: clock(now),
+                })}
               >
                 {paths.wip && (
                   <path

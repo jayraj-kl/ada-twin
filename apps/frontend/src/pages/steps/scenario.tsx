@@ -12,12 +12,16 @@ import { useProjectId, useProjectPath } from "@/lib/projects";
 import { getState, setState } from "@/lib/project-store";
 import { applyAnswer, valueOf } from "@/scenario/fields";
 import { usePlantScenario } from "@/scenario/plant";
-import { ScenarioChat, type ScenarioChatMessage } from "@/scenario/ScenarioChat";
+import {
+  ScenarioChat,
+  type ScenarioChatMessage,
+} from "@/scenario/ScenarioChat";
 import { describeScenario, suggestScenarios } from "@/twin/api";
 import { NumberField } from "@/components/ui/number-field";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
+import { t } from "@/lib/i18n";
 const NO_MACHINES: SavedMachine[] = [];
 const CHAT_KEY = "twin-scenario-chat";
 // The AI's suggestions, kept with what they were written for.
@@ -32,12 +36,14 @@ const CHAT_LIMIT = 40;
 const PARAM_EFFECTS: Record<string, (factor: number) => string> = {
   interArrival: (factor) =>
     factor < 1
-      ? `Releases ${Math.round((1 / factor - 1) * 100)}% faster`
-      : `Releases ${Math.round((1 - 1 / factor) * 100)}% slower`,
-  cycleTime: (factor) => `Cycle time +${Math.round((factor - 1) * 100)}%`,
-  mtbf: (factor) => `Fails ${Math.round((1 / factor - 1) * 100)}% sooner`,
+      ? t("Releases {0}% faster", { 0: Math.round((1 / factor - 1) * 100) })
+      : t("Releases {0}% slower", { 0: Math.round((1 - 1 / factor) * 100) }),
+  cycleTime: (factor) =>
+    t("Cycle time +{0}%", { 0: Math.round((factor - 1) * 100) }),
+  mtbf: (factor) =>
+    t("Fails {0}% sooner", { 0: Math.round((1 / factor - 1) * 100) }),
   maintenanceCrews: (factor) =>
-    `${Math.round((1 - factor) * 100)}% fewer maintenance crews`,
+    t("{0}% fewer maintenance crews", { 0: Math.round((1 - factor) * 100) }),
 };
 
 /** A whole-number field; an empty box means "not set". */
@@ -69,7 +75,9 @@ function NumberSetting({
         min={min}
         value={value === undefined ? undefined : Math.round(value / scale)}
         onValueChange={(shown) =>
-          onChange(shown === undefined ? undefined : Math.max(min, shown) * scale)
+          onChange(
+            shown === undefined ? undefined : Math.max(min, shown) * scale,
+          )
         }
         className="w-full"
       />
@@ -100,7 +108,8 @@ export default function ScenarioPage() {
   // Saved with the project; it has loaded before this step shows.
   useEffect(() => {
     setChat(
-      (getState(projectId, CHAT_KEY) as ScenarioChatMessage[] | undefined) ?? [],
+      (getState(projectId, CHAT_KEY) as ScenarioChatMessage[] | undefined) ??
+        [],
     );
     setChatLoaded(true);
   }, [projectId]);
@@ -126,15 +135,18 @@ export default function ScenarioPage() {
   useEffect(() => {
     if (!wantsSuggestions) return;
     const saved = getState(projectId, SUGGESTIONS_KEY) as
-      | StoredSuggestions
-      | undefined;
+      StoredSuggestions | undefined;
     if (saved?.basis === basis) {
       setSuggestions(saved.suggestions);
       return;
     }
     let cancelled = false;
     setSuggestions(null);
-    const { machines: named, process: text, ...plant } = JSON.parse(basis) as {
+    const {
+      machines: named,
+      process: text,
+      ...plant
+    } = JSON.parse(basis) as {
       machines: { name: string; count?: number }[];
       process: string;
       capacityPerShift?: number;
@@ -167,10 +179,7 @@ export default function ScenarioPage() {
       .filter(({ failed }) => !failed)
       .map(({ role, text, proposal, decided }) => ({
         role,
-        text:
-          proposal && decided
-            ? `${text} (proposal ${decided})`
-            : text,
+        text: proposal && decided ? `${text} (proposal ${decided})` : text,
       }));
     setChat((current) => [...current, request]);
     setAsking(true);
@@ -190,7 +199,7 @@ export default function ScenarioPage() {
         {
           id: `s${Date.now().toString(36)}a`,
           role: "assistant",
-          text: answer.reply || "Here is what I would set.",
+          text: answer.reply || t("Here is what I would set."),
           proposal: proposes
             ? {
                 changes: answer.changes.map((change) => ({
@@ -237,7 +246,7 @@ export default function ScenarioPage() {
       for (const { node, param, factor, reason } of adjustments) {
         const effect = PARAM_EFFECTS[param]?.(factor) ?? `${param} ×${factor}`;
         const line = lines.get(effect + reason) ?? { where: [], reason };
-        line.where.push(node ? (names.get(node) ?? node) : "Whole plant");
+        line.where.push(node ? (names.get(node) ?? node) : t("Whole plant"));
         lines.set(effect + reason, line);
       }
       return {
@@ -256,12 +265,14 @@ export default function ScenarioPage() {
 
   return (
     <>
-      <p className={ui.eyebrow}>Step 3 · Scenario</p>
-      <h1 className={ui.title}>What should the plant be tested against?</h1>
+      <p className={ui.eyebrow}>{t("Step 3 · Scenario")}</p>
+      <h1 className={ui.title}>
+        {t("What should the plant be tested against?")}
+      </h1>
       <p className={ui.lede}>
-        Set the conditions outside your control and the results you need. We
-        show exactly how each condition changes the simulation before anything
-        runs.
+        {t(
+          "Set the conditions outside your control and the results you need. We show exactly how each condition changes the simulation before anything runs.",
+        )}
       </p>
 
       <div
@@ -285,32 +296,34 @@ export default function ScenarioPage() {
         <div className={ui.stack}>
           <div data-tour="conditions" className={ui.panel}>
             <div className={ui.panelTitle}>
-              Conditions
+              {t("Conditions")}
               {saved ? (
                 <button
                   type="button"
                   onClick={() => setScenario(null)}
-                  title="Demand and targets go back to what this plant can make"
+                  title={t(
+                    "Demand and targets go back to what this plant can make",
+                  )}
                   className="text-xs font-normal text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
-                  Size to this plant
+                  {t("Size to this plant")}
                 </button>
               ) : (
-                <span className={ui.hint}>sized to this plant</span>
+                <span className={ui.hint}>{t("sized to this plant")}</span>
               )}
             </div>
             {capacityPerShift !== undefined && (
               <p className={ui.hint} style={{ marginBottom: 12 }}>
-                At its current figures this plant can make about{" "}
-                {capacityPerShift} {unit} in one {scenario.shiftHours}-hour
-                shift, held back by{" "}
+                {t("At its current figures this plant can make about")}{" "}
+                {capacityPerShift} {unit} {t("in one")} {scenario.shiftHours}
+                {t("-hour shift, held back by")}{" "}
                 {graph.nodes.find(({ id }) => id === capacity?.bottleneck)
-                  ?.name ?? "its slowest station"}
+                  ?.name ?? t("its slowest station")}
                 .
               </p>
             )}
             <div className={ui.field} style={{ marginBottom: 12 }}>
-              <label htmlFor="name">Name of this scenario</label>
+              <label htmlFor="name">{t("Name of this scenario")}</label>
               <input
                 id="name"
                 className={ui.input}
@@ -321,7 +334,7 @@ export default function ScenarioPage() {
             <div className={ui.fields}>
               <NumberSetting
                 id="shift"
-                label="Shift length"
+                label={t("Shift length")}
                 suffix="hours"
                 min={1}
                 value={scenario.shiftHours}
@@ -331,14 +344,14 @@ export default function ScenarioPage() {
               />
               <NumberSetting
                 id="demand"
-                label="Demand"
-                suffix={`${unit} per shift`}
+                label={t("Demand")}
+                suffix={t("{0} per shift", { 0: unit })}
                 value={scenario.demandPerShift}
                 onChange={(value) => set({ demandPerShift: value })}
               />
               <NumberSetting
                 id="temperature"
-                label="Ambient temperature"
+                label={t("Ambient temperature")}
                 suffix="°C"
                 min={-20}
                 value={scenario.ambientTempC}
@@ -346,7 +359,7 @@ export default function ScenarioPage() {
               />
               <NumberSetting
                 id="supply"
-                label="Supply disrupted"
+                label={t("Supply disrupted")}
                 suffix="%"
                 scale={0.01}
                 value={scenario.supplyDisruption}
@@ -356,7 +369,7 @@ export default function ScenarioPage() {
               />
               <NumberSetting
                 id="absent"
-                label="Maintenance staff absent"
+                label={t("Maintenance staff absent")}
                 suffix="%"
                 scale={0.01}
                 value={scenario.absenteeism}
@@ -366,7 +379,7 @@ export default function ScenarioPage() {
               />
               <NumberSetting
                 id="crews"
-                label="Maintenance crews"
+                label={t("Maintenance crews")}
                 suffix="crews"
                 min={1}
                 value={scenario.maintenanceCrews}
@@ -377,30 +390,30 @@ export default function ScenarioPage() {
 
           <div data-tour="requirements" className={ui.panel}>
             <div className={ui.panelTitle}>
-              Requirements
+              {t("Requirements")}
               <span className={ui.hint}>
-                leave one empty if it does not matter
+                {t("leave one empty if it does not matter")}
               </span>
             </div>
             <div className={ui.fields}>
               <NumberSetting
                 id="ship"
-                label="Ship at least"
-                suffix={`${unit} per shift`}
+                label={t("Ship at least")}
+                suffix={t("{0} per shift", { 0: unit })}
                 value={scenario.targets?.throughputPerShift}
                 onChange={(value) => setTarget({ throughputPerShift: value })}
               />
               <NumberSetting
                 id="wip"
-                label="Work in progress under"
+                label={t("Work in progress under")}
                 suffix={unit}
                 value={scenario.targets?.maxAverageWip}
                 onChange={(value) => setTarget({ maxAverageWip: value })}
               />
               <NumberSetting
                 id="down"
-                label="Any station down less than"
-                suffix="% of the shift"
+                label={t("Any station down less than")}
+                suffix={t("% of the shift")}
                 scale={0.01}
                 value={scenario.targets?.maxDownShare}
                 onChange={(value) => setTarget({ maxDownShare: value })}
@@ -410,48 +423,60 @@ export default function ScenarioPage() {
 
           <div data-tour="briefing" className={ui.panel}>
             <div className={ui.panelTitle}>
-              Crew briefing
+              {t("Crew briefing")}
               <span className={ui.hint}>
-                what your agents are told, beyond the targets
+                {t("what your agents are told, beyond the targets")}
               </span>
             </div>
             <label htmlFor="briefing" className="sr-only">
-              Crew briefing
+              {t("Crew briefing")}
             </label>
             <textarea
               id="briefing"
               rows={3}
               className={cn(ui.input, "h-auto w-full py-2")}
-              placeholder={`For example: the ${(machines.find(({ auxiliary }) => !auxiliary)?.name ?? "slowest machine").toLowerCase()} has been playing up, so keep an eye on it. Missing ${scenario.targets?.throughputPerShift ?? "the target of"} ${unit} is the one thing management will not accept.`}
+              placeholder={t(
+                "For example: the {0} has been playing up, so keep an eye on it. Missing {1} {2} is the one thing management will not accept.",
+                {
+                  0: (
+                    machines.find(({ auxiliary }) => !auxiliary)?.name ??
+                    "slowest machine"
+                  ).toLowerCase(),
+                  1: scenario.targets?.throughputPerShift ?? "the target of",
+                  2: unit,
+                },
+              )}
               value={scenario.briefing ?? ""}
               onChange={(event) =>
                 set({ briefing: event.target.value || undefined })
               }
             />
             <p className={ui.hint} style={{ marginTop: 6 }}>
-              It changes how the agents decide, not the plant itself.
+              {t("It changes how the agents decide, not the plant itself.")}
             </p>
           </div>
         </div>
 
         <div data-tour="effects" className={ui.panel}>
           <div className={ui.panelTitle}>
-            What this changes
-            <span className={ui.hint}>your baseline twin is untouched</span>
+            {t("What this changes")}
+            <span className={ui.hint}>
+              {t("your baseline twin is untouched")}
+            </span>
           </div>
           {"problem" in effects ? (
             <p className={ui.poor}>{effects.problem}</p>
           ) : effects.rows.length === 0 ? (
             <p className={ui.hint}>
-              Nothing: these conditions match the twin as you built it.
+              {t("Nothing: these conditions match the twin as you built it.")}
             </p>
           ) : (
             <table className={ui.table}>
               <thead>
                 <tr>
-                  <th>Where</th>
-                  <th>Effect</th>
-                  <th>Because</th>
+                  <th>{t("Where")}</th>
+                  <th>{t("Effect")}</th>
+                  <th>{t("Because")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -466,21 +491,19 @@ export default function ScenarioPage() {
             </table>
           )}
           <p className={ui.hint} style={{ marginTop: 12 }}>
-            Heat effects are modelling assumptions, not measurements of your
-            plant.
+            {t(
+              "Heat effects are modelling assumptions, not measurements of your plant.",
+            )}
           </p>
         </div>
       </div>
 
       <div data-tour="scenario-next" className={ui.actions}>
-        <Link
-          to={path("agents")}
-          className={cn(ui.button, ui.primary)}
-        >
-          Choose who runs it
+        <Link to={path("agents")} className={cn(ui.button, ui.primary)}>
+          {t("Choose who runs it")}
         </Link>
         <Link to={path("twin")} className={ui.button}>
-          Back
+          {t("Back")}
         </Link>
       </div>
     </>

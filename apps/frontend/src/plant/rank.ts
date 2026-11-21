@@ -8,6 +8,7 @@ import type { CostEstimate } from "@/twin/api";
 import type { SavedMachine, StoredRun } from "@/twin/project";
 import type { Change } from "@/twin/recommend";
 
+import { t } from "@/lib/i18n";
 /** Days a redesign applied before the days setting existed is averaged over. */
 const OLD_DAYS = 5;
 /** At most this many applied redesigns are kept. */
@@ -16,10 +17,10 @@ export const KEPT_APPLIED = 10;
 export type Tier = "critical" | "high" | "medium" | "low";
 
 export const TIER_LABEL: Record<Tier, string> = {
-  critical: "Critical",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
+  critical: t("Critical"),
+  high: t("High"),
+  medium: t("Medium"),
+  low: t("Low"),
 };
 
 export interface RankedRow {
@@ -49,12 +50,18 @@ export interface AppliedRedesign {
   at: number;
   changes: Change[];
   /** The run the redesign was measured against, on the twin before it. */
-  run: Pick<StoredRun, "seed" | "tickMinutes" | "scenario" | "graph" | "baseline"> & {
+  run: Pick<
+    StoredRun,
+    "seed" | "tickMinutes" | "scenario" | "graph" | "baseline"
+  > & {
     /** Days every measurement is averaged over, as the run was. */
     days?: number;
   };
   /** The machines before the change, with their pins in the world. */
-  machines: Pick<SavedMachine, "id" | "name" | "pins" | "count" | "auxiliary" | "spares">[];
+  machines: Pick<
+    SavedMachine,
+    "id" | "name" | "pins" | "count" | "auxiliary" | "spares"
+  >[];
   costs: Record<string, CostEstimate>;
   currency: string;
   /** Measured on the last step, once. */
@@ -92,21 +99,21 @@ function targetsOf({ targets, unit = "parts" }: Scenario) {
   if (targets?.throughputPerShift) {
     const wanted = targets.throughputPerShift;
     checks.push({
-      name: `${wanted} ${unit} per shift`,
+      name: t("{0} {1} per shift", { 0: wanted, 1: unit }),
       met: (kpis) => kpis.completed >= wanted,
     });
   }
   if (targets?.maxAverageWip) {
     const most = targets.maxAverageWip;
     checks.push({
-      name: `under ${most} ${unit} in progress`,
+      name: t("under {0} {1} in progress", { 0: most, 1: unit }),
       met: (kpis) => kpis.averageWip <= most,
     });
   }
   if (targets?.maxDownShare) {
     const most = targets.maxDownShare;
     checks.push({
-      name: `no station down over ${Math.round(most * 100)}%`,
+      name: t("no station down over {0}%", { 0: Math.round(most * 100) }),
       met: (kpis) =>
         Object.values(kpis.stations).every(({ down }) => down <= most),
     });
@@ -153,7 +160,9 @@ export async function rankChanges(
     measured.push({
       id: change.id,
       // A change the others cannot run without is needed by all of them.
-      marginal: without ? full.completed - without.completed : full.completed - base.completed,
+      marginal: without
+        ? full.completed - without.completed
+        : full.completed - base.completed,
       solo: alone ? alone.completed - base.completed : 0,
       needed: without
         ? checks

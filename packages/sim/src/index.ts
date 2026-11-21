@@ -8,8 +8,10 @@ export {
   param,
   validateGraph,
   type Anchor,
+  type Baseline,
   type BufferNode,
   type Dependency,
+  type DocumentKind,
   type Edge,
   type FactoryGraph,
   type FactoryNode,
@@ -37,7 +39,13 @@ export {
   type TickAction,
 } from "./kernel";
 
-export type { Kpis, StationKpis, SupportKpis } from "./kpi";
+export {
+  totalCrew,
+  type CrewWork,
+  type Kpis,
+  type StationKpis,
+  type SupportKpis,
+} from "./kpi";
 
 export {
   applyScenario,
@@ -55,7 +63,37 @@ export {
 } from "./shift";
 
 export {
+  givenNumbers,
+  traceNumbers,
+  type NumberSource,
+  type TracedPiece,
+} from "./trace";
+
+export {
   EMPTY_PLAYBOOK,
   playbookPolicy,
   type Playbook,
 } from "./playbook";
+
+export {
+  citationsOf,
+  dutyOf,
+  rangeStatus,
+  type Citation,
+  type RangeStatus,
+} from "./citation";
+
+export {
+  COST_RATES,
+  SHIFTS_PER_YEAR,
+  USD_INR,
+  agentsVsRules,
+  inCurrency,
+  machineMoney,
+  shiftMoney,
+  type AgentsVsRules,
+  type CostRateKey,
+  type CostRates,
+  type Currency,
+  type ShiftMoney,
+} from "./cost";

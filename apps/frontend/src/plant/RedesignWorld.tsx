@@ -15,8 +15,9 @@ import { CAMERA_HEIGHT_M } from "@/twin/project";
 import type { AppliedRedesign } from "./rank";
 import { type PlantView, pasteViews } from "./views";
 
+import { t } from "@/lib/i18n";
 /** How the panorama made for a redesign world is labelled among the documents. */
-export const REDESIGN_PANORAMA = "Redesign";
+export const REDESIGN_PANORAMA = t("Redesign");
 
 // World Labs takes about ten minutes; asking more often only costs requests.
 const POLL_MS = 15_000;
@@ -72,15 +73,15 @@ export function RedesignWorld({
   async function build() {
     setProblem("");
     try {
-      setStep("Putting the drawings back into your panorama…");
+      setStep(t("Putting the drawings back into your panorama…"));
       const panorama = await pasteViews(panoramaUrl, drawings);
-      setStep("Saving the panorama…");
+      setStep(t("Saving the panorama…"));
       const document = await uploadDocument(
         projectId,
         new File([panorama], "redesign-panorama.jpg", { type: "image/jpeg" }),
         { kind: "panorama", label: REDESIGN_PANORAMA },
       );
-      setStep("Sending it to World Labs…");
+      setStep(t("Sending it to World Labs…"));
       const started = await startOtherWorld(projectId, document.id);
       setWorld(started);
       onStarted({
@@ -95,7 +96,8 @@ export function RedesignWorld({
     }
   }
 
-  const minutes = (at: number) => Math.max(0, Math.round((Date.now() - at) / 60_000));
+  const minutes = (at: number) =>
+    Math.max(0, Math.round((Date.now() - at) / 60_000));
   const busy = step !== "";
   const failed = world?.status === "failed";
 
@@ -110,9 +112,9 @@ export function RedesignWorld({
     >
       <div className={ui.panelTitle}>
         <span className="flex items-center gap-1.5">
-          <BoxIcon className="size-4" /> The redesign in 3D
+          <BoxIcon className="size-4" /> {t("The redesign in 3D")}
         </span>
-        <span className={ui.hint}>World Labs Marble</span>
+        <span className={ui.hint}>{t("World Labs Marble")}</span>
       </div>
 
       {world?.status === "ready" && asked ? (
@@ -127,26 +129,30 @@ export function RedesignWorld({
           </div>
           <img
             src={documentUrl(projectId, asked.documentId)}
-            alt="The panorama the 3D world was built from"
+            alt={t("The panorama the 3D world was built from")}
             className="hidden aspect-[2/1] w-full rounded-xl border border-border object-cover print:block"
           />
           <p className="mt-2 text-xs text-muted-foreground print:hidden">
-            Drag to look around. Built from your panorama with the drawings put
-            back in; your twin keeps its own world.
+            {t(
+              "Drag to look around. Built from your panorama with the drawings put back in; your twin keeps its own world.",
+            )}
           </p>
           <p className="mt-2 hidden text-xs text-muted-foreground print:block">
-            The panorama World Labs built the 3D world from: your photo with
-            the drawings put back in.
+            {t(
+              "The panorama World Labs built the 3D world from: your photo with the drawings put back in.",
+            )}
           </p>
         </>
       ) : asked && world?.status !== "failed" ? (
         <div role="status" className="flex gap-3 text-sm">
           <span className="mt-0.5 size-4 shrink-0 animate-spin rounded-full border-2 border-ink border-t-transparent" />
           <div className="flex flex-col gap-1">
-            <strong>Building the 3D world…</strong>
+            <strong>{t("Building the 3D world…")}</strong>
             <span className="text-muted-foreground">
-              Started {minutes(asked.startedAt)} min ago. It usually takes 10–12
-              minutes; you can leave this page and come back.
+              {t(
+                "Started {0} min ago. It usually takes 10–12 minutes; you can leave this page and come back.",
+                { 0: minutes(asked.startedAt) },
+              )}
             </span>
             {world?.progress && (
               <span className="text-xs text-muted-foreground">
@@ -158,21 +164,23 @@ export function RedesignWorld({
       ) : (
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Turns the approved drawings into a walkable 3D splat: each drawing
-            is put back into your panorama where it was cut from, and World
-            Labs builds a world from it.
+            {t(
+              "Turns the approved drawings into a walkable 3D splat: each drawing is put back into your panorama where it was cut from, and World Labs builds a world from it.",
+            )}
           </p>
           <p className="flex gap-2 rounded-2xl border border-warning bg-warning/10 p-3 text-xs">
             <ClockIcon className="mt-px size-4 shrink-0" />
             <span>
-              <strong>This takes 10–12 minutes on average</strong>, and each
-              world uses World Labs credits (about US$1.20–2.40).
+              <strong>{t("This takes 10–12 minutes on average")}</strong>
+              {t(
+                ", and each world uses World Labs credits (about US$1.20–2.40).",
+              )}
             </span>
           </p>
           {failed && (
             <p className={cn(ui.poor, "flex gap-1.5 text-sm")}>
               <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
-              The 3D world could not be built
+              {t("The 3D world could not be built")}
               {world?.error ? `: ${world.error}` : ""}.
             </p>
           )}
@@ -184,17 +192,18 @@ export function RedesignWorld({
             onClick={() => void build()}
             title={
               drawings.length === 0
-                ? "Approve a drawing on the right first"
+                ? t("Approve a drawing on the right first")
                 : undefined
             }
           >
             <BoxIcon />
-            {busy ? step : failed ? "Try again" : "Generate a 3D splat"}
+            {busy ? step : failed ? t("Try again") : "Generate a 3D splat"}
           </button>
           {drawings.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              Draw the changes with Nano Banana on the right and pick the one
-              you like for each photo first.
+              {t(
+                "Draw the changes with Nano Banana on the right and pick the one you like for each photo first.",
+              )}
             </p>
           )}
         </div>

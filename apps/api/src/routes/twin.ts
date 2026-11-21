@@ -1,8 +1,11 @@
 import {
   type Machine,
   type CostedChange,
+  adviseOnCost,
   createGeminiModel,
+  type CitedClaim,
   type CurrentFlow,
+  DOCUMENT_KINDS,
   type FlowMessage,
   type PlantContext,
   describeScenario,
@@ -11,13 +14,15 @@ import {
   fillParameters,
   locateMachines,
   needsInfo,
+  pdfPages,
   reviseFlow,
   suggestScenarios,
+  verifyClaim,
 } from "@repo/agent";
 import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { selectDocument } from "@repo/db/queries/select";
-import type { Scenario } from "@repo/sim";
+import type { DocumentKind, Scenario } from "@repo/sim";
 import { readFile } from "../storage";
 
 function model() {
@@ -223,6 +228,8 @@ twin.post("/parameters", async (c) => {
   const keptIds = form
     .getAll("documentIds")
     .filter((entry): entry is string => typeof entry === "string");
+  // What each kept document is, by id, where the user or a demo pack says so.
+  const kinds = parseKinds(form.get("documentKinds"));
   const kept =
     typeof projectId === "string" && keptIds.length > 0
       ? await Promise.all(
@@ -238,6 +245,7 @@ twin.post("/parameters", async (c) => {
               name: row.name,
               bytes: new Uint8Array(file.data),
               mimeType: row.mimeType,
+              kind: kinds[id],
             };
           }),
         )
@@ -259,6 +267,127 @@ twin.post("/parameters", async (c) => {
     )),
   ];
   return c.json(await fillParameters(model(), machine, documents));
+});
+
+function parseKinds(value: unknown): Record<string, DocumentKind> {
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, kind]) =>
+        DOCUMENT_KINDS.includes(kind as DocumentKind),
+      ),
+    ) as Record<string, DocumentKind>;
+  } catch {
+    return {};
+  }
+}
+
+// A kept document never changes, so its text is read once per server.
+const pagesCache = new Map<string, Promise<string[] | null>>();
+const MAX_CACHED = 100;
+
+function pagesOf(projectId: string, documentId: string) {
+  const key = `${projectId}/${documentId}`;
+  let pages = pagesCache.get(key);
+  if (!pages) {
+    pages = (async () => {
+      const row = await selectDocument(projectId, documentId).catch(() => null);
+      const file = row && (await readFile(row.path));
+      if (!row || !file) return null;
+      if (row.mimeType.startsWith("text/")) return [file.data.toString("utf8")];
+      return row.mimeType === "application/pdf"
+        ? pdfPages(new Uint8Array(file.data))
+        : null;
+    })();
+    pagesCache.set(key, pages);
+    if (pagesCache.size > MAX_CACHED) {
+      pagesCache.delete(pagesCache.keys().next().value!);
+    }
+  }
+  return pages;
+}
+
+const MAX_CLAIMS = 60;
+
+/**
+ * Checks cited claims against a machine's kept documents: { projectId,
+ * documents: [{ id, name }], claims: [{ document, page?, quote, values }] }.
+ * Answers one verdict per claim, in order. No model is asked.
+ */
+twin.post("/verify", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    projectId?: unknown;
+    documents?: unknown;
+    claims?: unknown;
+  } | null;
+  const projectId = typeof body?.projectId === "string" ? body.projectId : "";
+  const listed = Array.isArray(body?.documents) ? body.documents : [];
+  const claims = Array.isArray(body?.claims) ? body.claims : null;
+  if (!projectId || !claims) {
+    throw new HTTPException(400, {
+      message: "Expected { projectId, documents, claims }",
+    });
+  }
+  const documents = await Promise.all(
+    listed.slice(0, 30).flatMap((entry) => {
+      const { id, name } = (entry ?? {}) as { id?: unknown; name?: unknown };
+      return typeof id === "string" && typeof name === "string"
+        ? [pagesOf(projectId, id).then((pages) => ({ name, pages }))]
+        : [];
+    }),
+  );
+  const verdicts = claims.slice(0, MAX_CLAIMS).map((entry) => {
+    const claim = (entry ?? {}) as Partial<CitedClaim>;
+    const values = Array.isArray(claim.values)
+      ? claim.values.filter(
+          (value) =>
+            Number.isFinite(value?.value) && typeof value?.unit === "string",
+        )
+      : [];
+    if (typeof claim.document !== "string" || typeof claim.quote !== "string") {
+      return { status: "failed" as const, reason: "The claim cites no passage" };
+    }
+    return verifyClaim(documents, {
+      document: claim.document,
+      page: Number.isInteger(claim.page) ? claim.page : undefined,
+      quote: claim.quote.slice(0, 2000),
+      values,
+    });
+  });
+  return c.json({ verdicts });
+});
+
+const MAX_FACTS = 30;
+
+/**
+ * Writes the cost feedback on a shift from the figures the page worked out:
+ * { plant, unit, facts: string[] }. Answers { brief }.
+ */
+twin.post("/cost-brief", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as {
+    plant?: unknown;
+    unit?: unknown;
+    facts?: unknown;
+  } | null;
+  const facts = Array.isArray(body?.facts)
+    ? body.facts
+        .filter((fact): fact is string => typeof fact === "string")
+        .slice(0, MAX_FACTS)
+        .map((fact) => fact.slice(0, 300))
+    : [];
+  if (facts.length === 0) {
+    throw new HTTPException(400, { message: "Expected the shift's cost figures" });
+  }
+  const text = (value: unknown) =>
+    typeof value === "string" ? value.slice(0, 120) : "";
+  return c.json({
+    brief: await adviseOnCost(model(), {
+      plant: text(body?.plant) || "the plant",
+      unit: text(body?.unit) || "parts",
+      facts,
+    }),
+  });
 });
 
 const MAX_COSTED = 10;

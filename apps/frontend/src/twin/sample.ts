@@ -1,4 +1,6 @@
+import { t } from "@/lib/i18n";
 import { withColors } from "./colors";
+import { withRecordedFigures } from "./demo-pack";
 import { PROCESS_KEY } from "./flow";
 import { MACHINES_KEY, type SavedMachine, WORLD_DIR } from "./project";
 
@@ -8,7 +10,7 @@ import { MACHINES_KEY, type SavedMachine, WORLD_DIR } from "./project";
 // kept with it under SAMPLE_WORLD_KEY.
 export const SAMPLE_WORLD_KEY = "twin-sample-world";
 
-export const SAMPLE_CREDIT = "Captured with World Labs Marble";
+export const SAMPLE_CREDIT = t("Captured with World Labs Marble");
 
 /** A machine seen in a sample's panorama; where it stands is left to the AI. */
 export interface SampleMachine {
@@ -127,15 +129,21 @@ export function sampleOf(slug: unknown): Sample {
   return SAMPLES.find((one) => one.slug === slug) ?? LEGACY;
 }
 
-/** A sample's machine list as the twin step keeps it, with no pins yet. */
+/**
+ * A sample's machine list as the twin step keeps it, with no pins yet, and
+ * the figures read from its document pack where it ships one.
+ */
 export function sampleMachines(one: Sample): SavedMachine[] {
-  return withColors<SavedMachine>(
-    one.machines.map(({ name, count, auxiliary }, index) => ({
-      id: `${one.slug}-${index + 1}`,
-      name,
-      count,
-      ...(auxiliary ? { auxiliary } : {}),
-    })),
+  return withRecordedFigures(
+    one.slug,
+    withColors<SavedMachine>(
+      one.machines.map(({ name, count, auxiliary }, index) => ({
+        id: `${one.slug}-${index + 1}`,
+        name,
+        count,
+        ...(auxiliary ? { auxiliary } : {}),
+      })),
+    ),
   );
 }
 

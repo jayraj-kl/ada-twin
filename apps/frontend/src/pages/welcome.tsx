@@ -9,11 +9,12 @@ import { Input, Label } from "@/components/ui/input";
 import { motionTokens, springs } from "@/lib/motion";
 import { firstName, getProfile, saveProfile } from "@/lib/profile";
 
+import { t } from "@/lib/i18n";
 const SETTING_UP_MS = 1500;
 const LINES = [
-  "Setting up your workspace…",
-  "Warming up the simulator…",
-  "Almost there…",
+  t("Setting up your workspace…"),
+  t("Warming up the simulator…"),
+  t("Almost there…"),
 ];
 
 function randomSeed() {
@@ -51,7 +52,7 @@ function SettingUp({ name, seed }: { name: string; seed: string }) {
         <Avatar seed={seed} className="size-28 shadow-hard" />
       </motion.div>
       <h1 className="mt-8 text-2xl font-bold tracking-tight">
-        Hey {name}, welcome in.
+        {t("Hey {0}, welcome in.", { 0: name })}
       </h1>
       <div className="mt-2 h-6 text-muted-foreground">
         <AnimatePresence mode="wait">
@@ -151,13 +152,17 @@ export default function WelcomePage() {
                     exit={{ scale: 0.6, opacity: 0, rotate: 12 }}
                     transition={springs.bouncy}
                   >
-                    <Avatar seed={seed} className="size-28" alt="Your avatar" />
+                    <Avatar
+                      seed={seed}
+                      className="size-28"
+                      alt={t("Your avatar")}
+                    />
                   </motion.div>
                 </AnimatePresence>
                 <motion.button
                   type="button"
-                  aria-label="Try another avatar"
-                  title="Try another avatar"
+                  aria-label={t("Try another avatar")}
+                  title={t("Try another avatar")}
                   onClick={() => {
                     setChosenSeed(randomSeed());
                     setSpin((turns) => turns + 1);
@@ -172,22 +177,26 @@ export default function WelcomePage() {
               </div>
 
               <h1 className="text-2xl font-bold tracking-tight">
-                {editing ? "Edit your profile" : "What should we call you?"}
+                {editing
+                  ? t("Edit your profile")
+                  : t("What should we call you?")}
               </h1>
               <p className="mt-1.5 text-sm text-muted-foreground">
                 {editing
-                  ? "Change your name or roll a new avatar."
-                  : "Just a name for now. Roll the dice for a different face."}
+                  ? t("Change your name or roll a new avatar.")
+                  : t(
+                      "Just a name for now. Roll the dice for a different face.",
+                    )}
               </p>
 
               <div className="mt-7 flex flex-col gap-1.5 text-left">
-                <Label htmlFor="name">Your name</Label>
+                <Label htmlFor="name">{t("Your name")}</Label>
                 <Input
                   id="name"
                   autoFocus
                   autoComplete="nickname"
                   maxLength={40}
-                  placeholder="e.g. Jay"
+                  placeholder={t("e.g. Jay")}
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   className="h-12 text-base"
@@ -200,7 +209,7 @@ export default function WelcomePage() {
                 className="mt-5 w-full"
                 disabled={!trimmed}
               >
-                {editing ? "Save" : "Continue"} <ArrowRightIcon />
+                {editing ? t("Save") : t("Continue")} <ArrowRightIcon />
               </Button>
               {editing && (
                 <Button
@@ -209,7 +218,7 @@ export default function WelcomePage() {
                   className="mt-2 w-full"
                   onClick={() => navigate(-1)}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </Button>
               )}
             </motion.form>

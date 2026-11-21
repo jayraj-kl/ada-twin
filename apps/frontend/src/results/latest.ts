@@ -3,6 +3,7 @@
 // root tests can check it.
 import type { Kpis } from "@repo/sim";
 
+import { t } from "../lib/i18n";
 /** The run with the picked changes, while the picks are still those it ran with. */
 export interface After<Run> {
   run: Run;
@@ -31,7 +32,12 @@ export function latestOf<Run extends { kpis: Kpis }>(
   after: After<Run> | null,
 ): Latest<Run> {
   return after
-    ? { run: after.run, rules: after.rules, crewDays: after.agents, withPicks: true }
+    ? {
+        run: after.run,
+        rules: after.rules,
+        crewDays: after.agents,
+        withPicks: true,
+      }
     : { run, rules, crewDays, withPicks: false };
 }
 
@@ -82,21 +88,34 @@ export function headline({
   const gained = crew === null ? 0 : Math.round((crew - rules) * 10) / 10;
   const said =
     crew === null
-      ? "no agents ran this shift"
+      ? t("no agents ran this shift")
       : gained > 0
-        ? `the crew shipped ${count(gained)} more ${unit} than standard rules`
+        ? t("the crew shipped {0} more {1} than standard rules", {
+            0: count(gained),
+            1: unit,
+          })
         : gained < 0
-          ? `the crew shipped ${count(-gained)} fewer ${unit} than standard rules`
-          : "the crew matched standard rules";
+          ? t("the crew shipped {0} fewer {1} than standard rules", {
+              0: count(-gained),
+              1: unit,
+            })
+          : t("the crew matched standard rules");
   const lead =
     picked > 0
-      ? `With your picked ${picked === 1 ? "change" : "changes"}, ${said}`
+      ? t("With your picked {0}, {1}", {
+          0: picked === 1 ? "change" : "changes",
+          1: said,
+        })
       : `${said[0]!.toUpperCase()}${said.slice(1)}`;
   if (!target) return lead;
   const shipped = crew ?? rules;
   return shipped >= target
-    ? `${lead}, and the target of ${target} was met`
-    : `${lead}, but the plant is ${count(target - shipped)} short of ${target}`;
+    ? t("{0}, and the target of {1} was met", { 0: lead, 1: target })
+    : t("{0}, but the plant is {1} short of {2}", {
+        0: lead,
+        1: count(target - shipped),
+        2: target,
+      });
 }
 
 /** What each change adds on top of the picked ones, once measured. */

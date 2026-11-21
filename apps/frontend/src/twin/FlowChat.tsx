@@ -12,6 +12,7 @@ import { motionTokens, springs } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { Flow } from "./flow";
 
+import { t } from "@/lib/i18n";
 export interface FlowChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -73,7 +74,9 @@ export function FlowChat({
   // Unresolved problems, turned into requests the user can send as they are.
   const suggestions =
     messages.length === 0
-      ? problems.slice(0, 2).map((problem) => `Fix this: ${problem}`)
+      ? problems
+          .slice(0, 2)
+          .map((problem) => t("Fix this: {0}", { 0: problem }))
       : [];
   const lastChange = [...messages]
     .reverse()
@@ -92,7 +95,7 @@ export function FlowChat({
           >
             <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
               <span className="flex items-center gap-1.5 text-xs font-semibold">
-                <SparklesIcon className="size-3.5" /> Flow assistant
+                <SparklesIcon className="size-3.5" /> {t("Flow assistant")}
               </span>
               <span className="flex items-center gap-1">
                 <button
@@ -100,12 +103,12 @@ export function FlowChat({
                   onClick={onClear}
                   className="rounded-full px-2 py-0.5 text-xs text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
                 >
-                  Clear
+                  {t("Clear")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  aria-label="Hide the conversation"
+                  aria-label={t("Hide the conversation")}
                   className="grid size-6 place-items-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
                 >
                   <ChevronDownIcon className="size-4" />
@@ -153,12 +156,12 @@ export function FlowChat({
                           onClick={() => onUndo(message.id)}
                           className="ml-1 flex items-center gap-1 rounded-full px-2 py-px text-[11px] font-semibold text-foreground outline-none hover:bg-card focus-visible:ring-[3px] focus-visible:ring-ring/40"
                         >
-                          <Undo2Icon className="size-3" /> Undo
+                          <Undo2Icon className="size-3" /> {t("Undo")}
                         </button>
                       )}
                       {message.undone && (
                         <span className="text-[11px] text-muted-foreground">
-                          Undone
+                          {t("Undone")}
                         </span>
                       )}
                     </span>
@@ -179,7 +182,7 @@ export function FlowChat({
                       }}
                     />
                   ))}
-                  <span className="sr-only">Working on it</span>
+                  <span className="sr-only">{t("Working on it")}</span>
                 </li>
               )}
             </ol>
@@ -214,12 +217,12 @@ export function FlowChat({
           onClick={() => messages.length > 0 && setOpen((value) => !value)}
           aria-label={
             problems.length === 0
-              ? "The flow can be simulated"
-              : `${problems.length} problems to fix`
+              ? t("The flow can be simulated")
+              : t("{0} problems to fix", { 0: problems.length })
           }
           title={
             problems.length === 0
-              ? "This flow can be simulated"
+              ? t("This flow can be simulated")
               : problems.join("\n")
           }
           className={cn(
@@ -234,10 +237,10 @@ export function FlowChat({
           ) : (
             <CircleAlertIcon className="size-3.5" />
           )}
-          {problems.length === 0 ? "Ready" : problems.length}
+          {problems.length === 0 ? t("Ready") : problems.length}
         </button>
         <label htmlFor="flow-chat" className="sr-only">
-          Tell the AI how material moves through your floor
+          {t("Tell the AI how material moves through your floor")}
         </label>
         <textarea
           id="flow-chat"
@@ -258,13 +261,15 @@ export function FlowChat({
           }}
           placeholder={
             disabled ??
-            "Describe your flow, e.g. after cutting, pieces wait on a rack for 12, then go to welding"
+            t(
+              "Describe your flow, e.g. after cutting, pieces wait on a rack for 12, then go to welding",
+            )
           }
           className="max-h-32 min-h-9 flex-1 resize-none self-center bg-transparent py-1.5 text-sm outline-none [field-sizing:content] placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
         />
         <motion.button
           type="submit"
-          aria-label="Send to the AI"
+          aria-label={t("Send to the AI")}
           disabled={!draft.trim() || busy || Boolean(disabled)}
           whileTap={{ scale: motionTokens.scale.press }}
           className="grid size-9 shrink-0 place-items-center rounded-full border border-ink bg-primary text-[#14140f] outline-none transition-opacity hover:shadow-hard-sm focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:opacity-40 disabled:hover:shadow-none"

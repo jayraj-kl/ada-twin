@@ -13,6 +13,7 @@ import { z } from "zod";
 import {
   RATE_LIMIT_FIRST_DELAY_SECONDS,
   RATE_LIMIT_RETRIES,
+  inLanguage,
   isRateLimited,
   log,
   textModelId,
@@ -159,15 +160,19 @@ export function createAgentPolicy(options: AgentPolicyOptions): Policy {
       agent: new LlmAgent({
         name: spec.id.replace(/[^A-Za-z0-9_]/g, "_"),
         model,
-        instruction: [
-          `You are ${spec.name}, the ${role.title.toLowerCase()} of a factory. ${role.duty}`,
-          PERSONAS[spec.persona],
-          spec.trait && `About you: ${spec.trait}`,
-          `The factory's goal this shift: ${options.goal}`,
-          "At each decision you are shown the state of the factory and a numbered list of options. Call choose_option exactly once with the number you pick and a one-sentence reason. Never answer in plain text.",
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
+        // The reasons are shown to people, so they follow the page's language.
+        instruction: inLanguage(
+          "floor-decision",
+          [
+            `You are ${spec.name}, the ${role.title.toLowerCase()} of a factory. ${role.duty}`,
+            PERSONAS[spec.persona],
+            spec.trait && `About you: ${spec.trait}`,
+            `The factory's goal this shift: ${options.goal}`,
+            "At each decision you are shown the state of the factory and a numbered list of options. Call choose_option exactly once with the number you pick and a one-sentence reason. Never answer in plain text.",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        ),
         tools: [choose],
       }),
     });

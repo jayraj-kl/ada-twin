@@ -44,6 +44,21 @@ export interface Kpis {
   supports?: Record<string, SupportKpis>;
   /** The station with the least spare capacity; null with no stations. */
   bottleneck: string | null;
+  /**
+   * What the maintenance crews worked on, in all and by machine. Missing from
+   * runs made before crew work was counted.
+   */
+  crew?: CrewWork & { byNode: Record<string, CrewWork> };
+}
+
+/** Crew work on a machine, or in all, over one run. */
+export interface CrewWork {
+  /** Crew-hours of repairs and services inside the shift. */
+  hours: number;
+  /** Repairs after a failure that a crew started. */
+  repairs: number;
+  /** Preventive services a crew started. */
+  services: number;
 }
 
 export function computeKpis(run: {
@@ -53,6 +68,7 @@ export function computeKpis(run: {
   wipTime: number;
   stations: ({ id: string; units: number } & StationTimes)[];
   supports: { id: string; downTime: number }[];
+  crew?: Map<string, CrewWork>;
 }): Kpis {
   const stations: Record<string, StationKpis> = {};
   let bottleneck: string | null = null;
@@ -99,5 +115,21 @@ export function computeKpis(run: {
       ]),
     ),
     bottleneck,
+    ...(run.crew ? { crew: totalCrew(Object.fromEntries(run.crew)) } : {}),
+  };
+}
+
+/** Crew work by machine, with its total. */
+export function totalCrew(
+  byNode: Record<string, CrewWork>,
+): CrewWork & { byNode: Record<string, CrewWork> } {
+  const all = Object.values(byNode);
+  const sum = (pick: (work: CrewWork) => number) =>
+    all.reduce((total, work) => total + pick(work), 0);
+  return {
+    hours: sum(({ hours }) => hours),
+    repairs: sum(({ repairs }) => repairs),
+    services: sum(({ services }) => services),
+    byNode,
   };
 }

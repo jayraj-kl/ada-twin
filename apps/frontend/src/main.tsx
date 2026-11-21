@@ -6,7 +6,11 @@ import { Link, Navigate, createBrowserRouter } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { Button } from "@/components/ui/button";
 import LandingPage from "@/pages/landing";
+import { language, t } from "@/lib/i18n";
 import "./index.css";
+
+// Screen readers and the browser read the page in its language.
+document.documentElement.lang = language;
 
 // The landing page loads alone; the app behind it arrives when it is opened.
 const WelcomePage = lazy(() => import("@/pages/welcome"));
@@ -30,9 +34,11 @@ function NotFound() {
     <main className="grid min-h-svh place-items-center px-4 text-center">
       <div>
         <p className="font-mono text-7xl font-semibold">404</p>
-        <p className="mt-2 text-muted-foreground">There is nothing at this address.</p>
+        <p className="mt-2 text-muted-foreground">
+          {t("There is nothing at this address.")}
+        </p>
         <Button asChild className="mt-6">
-          <Link to="/">Back home</Link>
+          <Link to="/">{t("Back home")}</Link>
         </Button>
       </div>
     </main>
@@ -49,7 +55,10 @@ const router = createBrowserRouter([
     element: <ProjectLayout />,
     children: [
       { index: true, element: <steps.capture /> },
-      ...Object.entries(steps).map(([path, Step]) => ({ path, element: <Step /> })),
+      ...Object.entries(steps).map(([path, Step]) => ({
+        path,
+        element: <Step />,
+      })),
       // Run, report and redesign are one step now.
       ...["run", "report", "redesign"].map((path) => ({
         path,
@@ -62,7 +71,13 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="ada-twin:theme" disableTransitionOnChange>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="light"
+      enableSystem={false}
+      storageKey="ada-twin:theme"
+      disableTransitionOnChange
+    >
       <MotionConfig reducedMotion="user">
         <Suspense>
           <RouterProvider router={router} />

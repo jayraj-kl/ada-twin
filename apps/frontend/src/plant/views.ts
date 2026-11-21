@@ -3,6 +3,7 @@ import type { Point } from "@/twin/project";
 import type { Change } from "@/twin/recommend";
 import type { AppliedRedesign } from "./rank";
 
+import { t } from "@/lib/i18n";
 /** A perspective photo cut out of the panorama, centred on what changed. */
 export interface PlantView {
   id: string;
@@ -45,7 +46,8 @@ const degrees = (radians: number) => (radians * 180) / Math.PI;
 function frame(pins: Point[]) {
   const directions = pins.map(directionOf);
   const sum = directions.reduce(
-    (total, direction) => total.map((value, axis) => value + direction[axis]!) as Direction,
+    (total, direction) =>
+      total.map((value, axis) => value + direction[axis]!) as Direction,
     [0, 0, 0] as Direction,
   );
   const length = Math.hypot(...sum) || 1;
@@ -55,7 +57,13 @@ function frame(pins: Point[]) {
     ...directions.map((direction) =>
       degrees(
         Math.acos(
-          Math.min(1, direction.reduce((dot, value, axis) => dot + value * centre[axis]!, 0)),
+          Math.min(
+            1,
+            direction.reduce(
+              (dot, value, axis) => dot + value * centre[axis]!,
+              0,
+            ),
+          ),
         ),
       ),
     ),
@@ -82,9 +90,14 @@ export function viewsFor(
 ): { views: PlantView[]; unseen: { change: Change; reason: string }[] } {
   const byId = new Map(machines.map((machine) => [machine.id, machine]));
   const nameOf = (id: string) =>
-    byId.get(id)?.name ?? graph.nodes.find((node) => node.id === id)?.name ?? id;
+    byId.get(id)?.name ??
+    graph.nodes.find((node) => node.id === id)?.name ??
+    id;
   const pinned = (id: string) => (byId.get(id)?.pins?.length ?? 0) > 0;
-  const views = new Map<string, Omit<PlantView, "yaw" | "pitch" | "fov"> & { pins: Point[] }>();
+  const views = new Map<
+    string,
+    Omit<PlantView, "yaw" | "pitch" | "fov"> & { pins: Point[] }
+  >();
   const unseen: { change: Change; reason: string }[] = [];
 
   const add = (
@@ -102,7 +115,9 @@ export function viewsFor(
     };
     if (!view.changeIds.includes(change.id)) {
       view.changeIds.push(change.id);
-      view.lines.push(change.detail ? `${change.title}: ${change.detail}` : change.title);
+      view.lines.push(
+        change.detail ? `${change.title}: ${change.detail}` : change.title,
+      );
     }
     view.prompt = `${view.prompt} ${ask}`.trim();
     views.set(key, view);
@@ -121,7 +136,8 @@ export function viewsFor(
   const ask = (diff: GraphDiff): [string, string] | string => {
     switch (diff.type) {
       case "add-units": {
-        if (!pinned(diff.station)) return `${nameOf(diff.station)} has no pin in the world`;
+        if (!pinned(diff.station))
+          return t("{0} has no pin in the world", { 0: nameOf(diff.station) });
         const count = byId.get(diff.station)?.count ?? 1;
         return [
           `node:${diff.station}`,
@@ -129,14 +145,16 @@ export function viewsFor(
         ];
       }
       case "add-spare":
-        if (!pinned(diff.support)) return `${nameOf(diff.support)} has no pin in the world`;
+        if (!pinned(diff.support))
+          return t("{0} has no pin in the world", { 0: nameOf(diff.support) });
         return [
           `node:${diff.support}`,
           `Add ${diff.count === 1 ? "a standby" : `${diff.count} standby`} ${nameOf(diff.support)}, the same model as the existing one, installed next to it and connected in parallel.`,
         ];
       case "insert-buffer": {
         const ends = [diff.from, diff.to].filter(pinned);
-        if (ends.length === 0) return "Neither end of the link has a pin in the world";
+        if (ends.length === 0)
+          return t("Neither end of the link has a pin in the world");
         return [
           `link:${diff.from}:${diff.to}`,
           `Add a ${diff.name.toLowerCase()} holding about ${diff.capacity} parts between ${nameOf(diff.from)} and ${nameOf(diff.to)}, sized and styled to fit the plant.`,
@@ -144,7 +162,8 @@ export function viewsFor(
       }
       case "insert-station": {
         const ends = [diff.from, diff.to].filter(pinned);
-        if (ends.length === 0) return "Neither machine beside it has a pin in the world";
+        if (ends.length === 0)
+          return t("Neither machine beside it has a pin in the world");
         return [
           `link:${diff.from}:${diff.to}`,
           `Add ${diff.units === 1 ? "a" : diff.units} new ${diff.name.toLowerCase()}${diff.units === 1 ? "" : "s"} between ${nameOf(diff.from)} and ${nameOf(diff.to)}: industrial equipment of that kind, at a realistic size, piped and wired in like its neighbours.`,
@@ -152,7 +171,8 @@ export function viewsFor(
       }
       case "add-support": {
         const served = diff.neededBy.filter(pinned);
-        if (served.length === 0) return "Nothing it serves has a pin in the world";
+        if (served.length === 0)
+          return t("Nothing it serves has a pin in the world");
         return [
           `node:${served[0]}`,
           `Add a new ${diff.name.toLowerCase()} next to ${nameOf(served[0]!)}, connected to it: industrial equipment of that kind, at a realistic size.`,
@@ -160,14 +180,15 @@ export function viewsFor(
       }
       case "resize-buffer": {
         const fed = graph.edges.find(({ from }) => from === diff.buffer)?.to;
-        if (!fed || !pinned(fed)) return "The buffer has no machine with a pin next to it";
+        if (!fed || !pinned(fed))
+          return t("The buffer has no machine with a pin next to it");
         return [
           `node:${fed}`,
           `Make the ${nameOf(diff.buffer).toLowerCase()} in front of ${nameOf(fed)} large enough for about ${diff.capacity} parts.`,
         ];
       }
       default:
-        return "A change to how it runs, not to what you can see";
+        return t("A change to how it runs, not to what you can see");
     }
   };
 
@@ -203,8 +224,8 @@ export function viewsFor(
         change,
         reason:
           change.diffs.length === 0
-            ? "More crews: nothing new to see on the floor"
-            : (reasons[0] ?? "Nothing to see"),
+            ? t("More crews: nothing new to see on the floor")
+            : (reasons[0] ?? t("Nothing to see")),
       });
     }
   }
@@ -233,12 +254,13 @@ function loadPanorama(url: string): Promise<ImageData> {
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
       const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return reject(new Error("This browser cannot read images"));
+      if (!context)
+        return reject(new Error(t("This browser cannot read images")));
       context.drawImage(image, 0, 0);
       resolve(context.getImageData(0, 0, canvas.width, canvas.height));
     };
     image.onerror = () =>
-      reject(new Error("The plant's panorama could not be loaded"));
+      reject(new Error(t("The plant's panorama could not be loaded")));
     image.src = url;
   }).catch((error: unknown) => {
     panoramas.delete(url);
@@ -269,9 +291,17 @@ export async function cutView(
 
   const yaw = radians(view.yaw);
   const pitch = radians(view.pitch);
-  const forward = [Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw)];
+  const forward = [
+    Math.cos(pitch) * Math.sin(yaw),
+    Math.sin(pitch),
+    Math.cos(pitch) * Math.cos(yaw),
+  ];
   const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
-  const up = [-Math.sin(pitch) * Math.sin(yaw), Math.cos(pitch), -Math.sin(pitch) * Math.cos(yaw)];
+  const up = [
+    -Math.sin(pitch) * Math.sin(yaw),
+    Math.cos(pitch),
+    -Math.sin(pitch) * Math.cos(yaw),
+  ];
   const halfWide = Math.tan(radians(view.fov) / 2);
   const halfHigh = (halfWide * height) / width;
   const { width: sw, height: sh, data } = source;
@@ -311,11 +341,12 @@ function loadPixels(src: string): Promise<ImageData> {
       canvas.width = image.naturalWidth;
       canvas.height = image.naturalHeight;
       const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) return reject(new Error("This browser cannot read images"));
+      if (!context)
+        return reject(new Error(t("This browser cannot read images")));
       context.drawImage(image, 0, 0);
       resolve(context.getImageData(0, 0, canvas.width, canvas.height));
     };
-    image.onerror = () => reject(new Error("A drawing could not be loaded"));
+    image.onerror = () => reject(new Error(t("A drawing could not be loaded")));
     image.src = src;
   });
 }
@@ -342,9 +373,17 @@ export async function pasteViews(
     const { width: iw, height: ih, data } = image;
     const yaw = radians(view.yaw);
     const pitch = radians(view.pitch);
-    const forward = [Math.cos(pitch) * Math.sin(yaw), Math.sin(pitch), Math.cos(pitch) * Math.cos(yaw)];
+    const forward = [
+      Math.cos(pitch) * Math.sin(yaw),
+      Math.sin(pitch),
+      Math.cos(pitch) * Math.cos(yaw),
+    ];
     const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
-    const up = [-Math.sin(pitch) * Math.sin(yaw), Math.cos(pitch), -Math.sin(pitch) * Math.cos(yaw)];
+    const up = [
+      -Math.sin(pitch) * Math.sin(yaw),
+      Math.cos(pitch),
+      -Math.sin(pitch) * Math.cos(yaw),
+    ];
     // The view's shape as it was cut, whatever size the drawing came back.
     const halfWide = Math.tan(radians(view.fov) / 2);
     const halfHigh = (halfWide * VIEW_HEIGHT) / VIEW_WIDTH;
@@ -383,12 +422,19 @@ export async function pasteViews(
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) =>
-        blob ? resolve(blob) : reject(new Error("The panorama could not be made")),
+        blob
+          ? resolve(blob)
+          : reject(new Error(t("The panorama could not be made"))),
       "image/jpeg",
       0.92,
     ),
   );
 }
 
-export const dataUrl = ({ mimeType, data }: { mimeType: string; data: string }) =>
-  `data:${mimeType};base64,${data}`;
+export const dataUrl = ({
+  mimeType,
+  data,
+}: {
+  mimeType: string;
+  data: string;
+}) => `data:${mimeType};base64,${data}`;

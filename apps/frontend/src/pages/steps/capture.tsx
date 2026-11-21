@@ -29,11 +29,21 @@ import {
 } from "@/lib/projects";
 import {
   getField,
+  getState,
   loadProject,
   setField,
   setState,
   useStateValue,
 } from "@/lib/project-store";
+import {
+  DEMO_PACK_KEY,
+  attachPack,
+  loadPack,
+  recordedRates,
+  withRecordedFigures,
+} from "@/twin/demo-pack";
+import type { SavedMachine } from "@/twin/project";
+import { COST_RATES_KEY } from "@/results/cost";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -57,6 +67,7 @@ import {
   sampleSeed,
 } from "@/twin/sample";
 
+import { t } from "@/lib/i18n";
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp"];
 const MAX_BYTES = 20 * 1024 * 1024;
 const TYPE_MS = 1100;
@@ -106,7 +117,7 @@ async function readUpload(file: File): Promise<Upload> {
             : undefined,
     };
   } catch {
-    return { ...base, problem: "Could not read this image" };
+    return { ...base, problem: t("Could not read this image") };
   }
 }
 
@@ -121,7 +132,7 @@ function useWindowDrag(enabled: boolean, onFiles: (files: FileList) => void) {
     // Enter and leave fire for every child crossed, so count the depth.
     let depth = 0;
     const hasFiles = (event: DragEvent) =>
-      event.dataTransfer?.types.includes("Files") ?? false;
+      event.dataTransfer?.types.includes(t("Files")) ?? false;
     const enter = (event: DragEvent) => {
       if (!hasFiles(event)) return;
       depth += 1;
@@ -215,7 +226,7 @@ function PanoTile({
       <div
         className="relative aspect-[2/1] overflow-hidden rounded-2xl border border-border bg-muted [container-type:inline-size] group-focus-within:border-ink group-hover:border-ink"
         role="img"
-        aria-label={`${room || "Untitled room"}, 360° panorama`}
+        aria-label={t("{0}, 360° panorama", { 0: room || "Untitled room" })}
       >
         <div
           className="pano-pan absolute inset-0 group-focus-within:[animation-play-state:running] group-hover:[animation-play-state:running]"
@@ -226,7 +237,7 @@ function PanoTile({
         )}
         {sample && (
           <span className="absolute top-1.5 left-1.5 rounded-full border border-ink bg-primary px-1.5 font-mono text-[10px] font-semibold tracking-[0.06em] text-[#14140f] uppercase">
-            Sample
+            {t("Sample")}
           </span>
         )}
         <span className="absolute bottom-1.5 left-1.5 rounded-full bg-[#14140f]/80 px-1.5 font-mono text-[10px] text-white tabular-nums">
@@ -236,7 +247,7 @@ function PanoTile({
           <button
             type="button"
             onClick={onRemove}
-            aria-label={`Remove ${room || "this panorama"}`}
+            aria-label={t("Remove {0}", { 0: room || "this panorama" })}
             className="absolute top-1.5 right-1.5 grid size-7 place-items-center rounded-full border border-ink bg-card text-foreground outline-none hover:shadow-hard-sm focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/40 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
           >
             <XIcon className="size-3.5" />
@@ -247,8 +258,8 @@ function PanoTile({
         <input
           value={room}
           onChange={(event) => onRoom(event.target.value)}
-          aria-label="Room or hall shown"
-          placeholder="Name this room"
+          aria-label={t("Room or hall shown")}
+          placeholder={t("Name this room")}
           maxLength={40}
           className="w-full truncate rounded-md bg-transparent px-1 text-xs font-medium outline-none placeholder:text-muted-foreground hover:bg-muted focus-visible:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/40"
         />
@@ -265,18 +276,16 @@ function PanoTile({
 /** The sample plants, one card each, for trying the app without photos. */
 function SampleWorlds({ onOpen }: { onOpen: (sample: Sample) => void }) {
   return (
-    <section
-      aria-labelledby="samples-title"
-      className="flex flex-col gap-3"
-    >
+    <section aria-labelledby="samples-title" className="flex flex-col gap-3">
       <div data-tour="samples" className="flex flex-col gap-1">
         <h2 id="samples-title" className="font-bold tracking-tight">
-          Sample worlds
+          {t("Sample worlds")}
         </h2>
         <p className="text-sm text-muted-foreground">
-          Building a 3D world from your own panorama can take a while. To try
-          the app out now, open one of these real plants below. Each opens as a
-          separate sample project. {SAMPLE_CREDIT}.
+          {t(
+            "Building a 3D world from your own panorama can take a while. To try the app out now, open one of these real plants below. Each opens as a separate sample project. {0}.",
+            { 0: SAMPLE_CREDIT },
+          )}
         </p>
       </div>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -294,26 +303,30 @@ function SampleWorlds({ onOpen }: { onOpen: (sample: Sample) => void }) {
                 style={{ backgroundImage: `url("${one.pano}")` }}
               />
               <span className="absolute bottom-1.5 left-1.5 rounded-full bg-[#14140f]/80 px-1.5 font-mono text-[10px] text-white">
-                360° · 3D world
+                {t("360° · 3D world")}
               </span>
             </div>
             <div className="flex flex-1 flex-col gap-1 px-1">
-              <h3 className="font-semibold tracking-tight">{one.title}</h3>
+              <h3 className="font-semibold tracking-tight">{t(one.title)}</h3>
               <p className="line-clamp-3 text-xs text-muted-foreground">
-                {one.process}
+                {t(one.process)}
               </p>
               <ul
-                aria-label={`Machines in the ${one.title.toLowerCase()}`}
+                aria-label={t("Machines in the {0}", {
+                  0: t(one.title).toLowerCase(),
+                })}
                 className="mt-1.5 flex flex-wrap gap-1"
               >
                 {one.machines.map(({ name, count, auxiliary }) => (
                   <li
                     key={name}
-                    title={auxiliary ? "Support equipment" : undefined}
+                    title={auxiliary ? t("Support equipment") : undefined}
                     className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
                   >
-                    {name}
-                    {count > 1 && <span className="tabular-nums"> ×{count}</span>}
+                    {t(name)}
+                    {count > 1 && (
+                      <span className="tabular-nums"> ×{count}</span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -323,9 +336,11 @@ function SampleWorlds({ onOpen }: { onOpen: (sample: Sample) => void }) {
               size="sm"
               className="w-fit"
               onClick={() => onOpen(one)}
-              aria-label={`Open the ${one.title.toLowerCase()} sample`}
+              aria-label={t("Open the {0} sample", {
+                0: t(one.title).toLowerCase(),
+              })}
             >
-              <SparklesIcon /> Open sample
+              <SparklesIcon /> {t("Open sample")}
             </Button>
           </motion.li>
         ))}
@@ -377,16 +392,14 @@ export default function CapturePage() {
             ({ kind, label }) =>
               kind === "panorama" && label !== REDESIGN_PANORAMA,
           )
-          .map(
-            (document): Upload => ({
-              id: document.id,
-              documentId: document.id,
-              name: document.name,
-              preview: documentUrl(projectId, document.id),
-              megabytes: `${(document.size / 1e6).toFixed(1)} MB`,
-              room: document.label ?? document.name,
-            }),
-          );
+          .map((document): Upload => ({
+            id: document.id,
+            documentId: document.id,
+            name: document.name,
+            preview: documentUrl(projectId, document.id),
+            megabytes: `${(document.size / 1e6).toFixed(1)} MB`,
+            room: document.label ?? document.name,
+          }));
         setUploads((current) => [
           ...kept.filter(({ id }) => !current.some((item) => item.id === id)),
           ...current,
@@ -417,7 +430,9 @@ export default function CapturePage() {
     } catch (error) {
       update(upload.id, {
         saving: false,
-        problem: `Not saved: ${error instanceof Error ? error.message : String(error)}`,
+        problem: t("Not saved: {0}", {
+          0: error instanceof Error ? error.message : String(error),
+        }),
       });
     }
   }
@@ -457,8 +472,8 @@ export default function CapturePage() {
     setAnnouncement(
       [
         `${added.length} ${added.length === 1 ? "panorama" : "panoramas"} added`,
-        unusable > 0 && `${unusable} not usable`,
-        skipped > 0 && `${skipped} skipped, not JPG, PNG or WebP`,
+        unusable > 0 && t("{0} not usable", { 0: unusable }),
+        skipped > 0 && t("{0} skipped, not JPG, PNG or WebP", { 0: skipped }),
       ]
         .filter(Boolean)
         .join(", ") + ".",
@@ -491,7 +506,9 @@ export default function CapturePage() {
   const [buildError, setBuildError] = useState("");
   const worldProblem =
     buildError ||
-    (own.world?.status === "failed" ? (own.world.error ?? "unknown error") : "");
+    (own.world?.status === "failed"
+      ? (own.world.error ?? "unknown error")
+      : "");
 
   async function buildWorld() {
     const first = panoramas[0];
@@ -520,10 +537,43 @@ export default function CapturePage() {
       if (!Array.isArray(saved) || saved.length === 0) {
         setField(opened.id, "machines", sampleMachines(chosen));
       }
+      // Its document pack, once: the documents its figures were read from.
+      // A sample opened before packs existed gets them, and the figures, now.
+      if (getState(opened.id, DEMO_PACK_KEY) === undefined) {
+        const manifest = await loadPack(chosen);
+        if (manifest) {
+          const machines = withRecordedFigures(
+            chosen.slug,
+            getField(opened.id, "machines") as SavedMachine[],
+          );
+          const attached = await attachPack(
+            opened.id,
+            chosen,
+            manifest,
+            machines,
+          ).catch((error: unknown) => {
+            setAnnouncement(
+              t("The sample's documents could not be kept: {0}", {
+                0: error instanceof Error ? error.message : String(error),
+              }),
+            );
+            return null;
+          });
+          setField(opened.id, "machines", attached?.machines ?? machines);
+          if (attached) setState(opened.id, DEMO_PACK_KEY, attached.pack);
+          // Its cost rates, read from the cost sheet in the pack.
+          const rates = recordedRates(chosen.slug);
+          if (rates && getState(opened.id, COST_RATES_KEY) === undefined) {
+            setState(opened.id, COST_RATES_KEY, rates);
+          }
+        }
+      }
       navigate(`/p/${opened.id}/capture`, { state: { typing: true } });
     } catch (error) {
       setAnnouncement(
-        `The sample could not be opened: ${error instanceof Error ? error.message : String(error)}`,
+        t("The sample could not be opened: {0}", {
+          0: error instanceof Error ? error.message : String(error),
+        }),
       );
     }
   }
@@ -551,11 +601,12 @@ export default function CapturePage() {
 
   return (
     <>
-      <p className={ui.eyebrow}>Step 1 · Capture</p>
-      <h1 className={ui.title}>Start from photos of your plant</h1>
+      <p className={ui.eyebrow}>{t("Step 1 · Capture")}</p>
+      <h1 className={ui.title}>{t("Start from photos of your plant")}</h1>
       <p className={ui.lede}>
-        Bring the 360° panoramas your 3D world is built from, one per room or
-        hall, and describe how material moves through the floor.
+        {t(
+          "Bring the 360° panoramas your 3D world is built from, one per room or hall, and describe how material moves through the floor.",
+        )}
       </p>
 
       {/* Asked once, before the first AI step; then it lives in the top bar. */}
@@ -584,18 +635,19 @@ export default function CapturePage() {
           )}
         >
           <h2 id="composer-title" className="sr-only">
-            Panoramas and process
+            {t("Panoramas and process")}
           </h2>
 
           {sample && (
             <div
               data-tour="sample-banner"
-              className="flex flex-wrap items-center justify-between gap-2 rounded-t-[calc(var(--radius-card)-1px)] bg-[#14140f] px-4 py-2.5 text-xs text-[#f5f5eb]">
+              className="flex flex-wrap items-center justify-between gap-2 rounded-t-[calc(var(--radius-card)-1px)] bg-[#14140f] px-4 py-2.5 text-xs text-[#f5f5eb]"
+            >
               <span className="flex items-center gap-2">
                 <span className="size-2 rounded-full bg-primary" />
                 <span>
-                  <strong className="font-semibold">Sample plant</strong> ·
-                  read-only, not your data
+                  <strong className="font-semibold">{t("Sample plant")}</strong>{" "}
+                  {t("· read-only, not your data")}
                 </span>
               </span>
               <button
@@ -603,7 +655,7 @@ export default function CapturePage() {
                 onClick={leaveSample}
                 className="flex items-center gap-1.5 rounded-full border border-white/25 px-2.5 py-1 font-semibold outline-none hover:border-primary hover:text-primary focus-visible:ring-[3px] focus-visible:ring-primary/50"
               >
-                <LogOutIcon className="size-3.5" /> Delete sample
+                <LogOutIcon className="size-3.5" /> {t("Delete sample")}
               </button>
             </div>
           )}
@@ -629,9 +681,11 @@ export default function CapturePage() {
                   <ImageUpIcon className="size-5" />
                 </span>
                 <strong className="text-foreground">
-                  Drop 360° panoramas, paste them, or click to choose
+                  {t("Drop 360° panoramas, paste them, or click to choose")}
                 </strong>
-                <span>JPG, PNG or WebP · 2:1 ratio · up to 20 MB each</span>
+                <span>
+                  {t("JPG, PNG or WebP · 2:1 ratio · up to 20 MB each")}
+                </span>
               </button>
             ) : (
               <ul className="grid max-h-[340px] grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3 overflow-y-auto p-0.5">
@@ -642,7 +696,7 @@ export default function CapturePage() {
                       src={upload.preview}
                       meta={
                         upload.saving
-                          ? "Saving…"
+                          ? t("Saving…")
                           : (upload.pixels ?? upload.megabytes)
                       }
                       problem={upload.problem}
@@ -656,7 +710,7 @@ export default function CapturePage() {
                       type="button"
                       ref={addButton}
                       onClick={() => picker.current?.click()}
-                      aria-label="Add more panoramas"
+                      aria-label={t("Add more panoramas")}
                       className="grid aspect-[2/1] w-full place-items-center rounded-2xl border-[1.5px] border-dashed border-border text-muted-foreground outline-none transition-colors hover:border-ink hover:text-foreground focus-visible:border-ink focus-visible:ring-[3px] focus-visible:ring-ring/40"
                     >
                       <PlusIcon className="size-5" />
@@ -686,10 +740,10 @@ export default function CapturePage() {
               htmlFor="process"
               className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs font-medium text-muted-foreground"
             >
-              How does material move through your floor?
+              {t("How does material move through your floor?")}
               {!sample && (
                 <span className="font-normal">
-                  optional, but the flow we draft is much better with it
+                  {t("optional, but the flow we draft is much better with it")}
                 </span>
               )}
             </label>
@@ -697,7 +751,9 @@ export default function CapturePage() {
               id="process"
               readOnly={sample}
               rows={3}
-              placeholder="e.g. Raw parts arrive at the saws, go to the two lathes, wait on a rack, then get washed and packed."
+              placeholder={t(
+                "e.g. Raw parts arrive at the saws, go to the two lathes, wait on a rack, then get washed and packed.",
+              )}
               value={text}
               onChange={(event) => setProcess(event.target.value)}
               aria-describedby={sample ? "sample-note" : undefined}
@@ -711,7 +767,7 @@ export default function CapturePage() {
                 id="sample-note"
                 className="px-1 text-xs text-muted-foreground"
               >
-                Sample description · {SAMPLE_CREDIT}
+                {t("Sample description · {0}", { 0: SAMPLE_CREDIT })}
               </span>
             ) : (
               <div className="flex items-center gap-3">
@@ -721,12 +777,12 @@ export default function CapturePage() {
                     onClick={() => picker.current?.click()}
                     className={ui.button}
                   >
-                    <PlusIcon /> Add panoramas
+                    <PlusIcon /> {t("Add panoramas")}
                   </button>
                 )}
                 <span className="px-1 font-mono text-xs text-muted-foreground tabular-nums">
                   {uploads.length === 0
-                    ? "No panoramas yet"
+                    ? t("No panoramas yet")
                     : `${usable}/${uploads.length} usable`}
                 </span>
               </div>
@@ -739,7 +795,7 @@ export default function CapturePage() {
                 className="hover:-translate-y-px hover:shadow-hard-sm"
               >
                 <Link to={path("twin")}>
-                  Open the sample twin <ArrowRightIcon />
+                  {t("Open the sample twin")} <ArrowRightIcon />
                 </Link>
               </Button>
             ) : (
@@ -753,16 +809,16 @@ export default function CapturePage() {
                   disabled={panoramas.length === 0 || building || starting}
                   title={
                     panoramas.length === 0
-                      ? "Add a 2:1 panorama first"
-                      : "Builds a walkable 3D world from your first panorama"
+                      ? t("Add a 2:1 panorama first")
+                      : t("Builds a walkable 3D world from your first panorama")
                   }
                   onClick={() => void buildWorld()}
                 >
                   <SparklesIcon />
                   {building
-                    ? "Building…"
+                    ? t("Building…")
                     : starting
-                      ? "Starting…"
+                      ? t("Starting…")
                       : own.own
                         ? "Rebuild the 3D world"
                         : "Generate the 3D world"}
@@ -773,7 +829,7 @@ export default function CapturePage() {
                   className="hover:-translate-y-px hover:shadow-hard-sm"
                 >
                   <Link to={path("twin")}>
-                    Continue to the twin <ArrowRightIcon />
+                    {t("Continue to the twin")} <ArrowRightIcon />
                   </Link>
                 </Button>
               </div>
@@ -789,10 +845,17 @@ export default function CapturePage() {
               )}
             >
               {worldProblem
-                ? `The 3D world could not be built: ${worldProblem}`
+                ? t("The 3D world could not be built: {0}", { 0: worldProblem })
                 : building
-                  ? `Building your 3D world${own.world?.progress ? ` · ${own.world.progress}` : ""}. World Labs usually takes about 5 minutes; the demo world is used until yours is ready.`
-                  : "Your own 3D world is ready and used in every step."}
+                  ? t(
+                      "Building your 3D world{0}. World Labs usually takes about 5 minutes; the demo world is used until yours is ready.",
+                      {
+                        0: own.world?.progress
+                          ? ` · ${own.world.progress}`
+                          : "",
+                      },
+                    )
+                  : t("Your own 3D world is ready and used in every step.")}
             </p>
           )}
 
@@ -806,7 +869,8 @@ export default function CapturePage() {
                 className="pointer-events-none absolute inset-0 grid place-items-center rounded-[inherit] border-2 border-ink bg-primary/85 text-sm font-semibold text-[#14140f]"
               >
                 <span className="flex items-center gap-2">
-                  <ImageUpIcon className="size-5" /> Drop to add panoramas
+                  <ImageUpIcon className="size-5" />{" "}
+                  {t("Drop to add panoramas")}
                 </span>
               </motion.div>
             )}

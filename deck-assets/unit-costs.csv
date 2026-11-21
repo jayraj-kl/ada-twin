@@ -1,0 +1,7 @@
+item,usd,inr,how_obtained,date,detail
+One agent shift (local app run),0.442,41.1,measured: Vertex AI token_count metric (Cloud Monitoring) x official list price,2026-11-21,"189,569 input + 17,560 output tokens, gemini-3.5-flash, 23:06-23:10 UTC; everything the app asked Gemini in that window (30 decisions + playbook)"
+One agent shift (trial with 2 changes),0.454,42.2,measured: Vertex AI token_count metric x official list price,2026-11-21,"182,866 input + 20,014 output tokens, 23:18-23:21 UTC"
+One agent shift (benchmark on the live API),0.262,24.4,measured: Vertex AI token_count metric x official list price,2026-11-21,"136,815 input + 6,346 output tokens, 22:14-22:16 UTC; also includes the start of the web price lookup, so an upper bound for that run"
+One Gemini document read,0.0080,0.74,measured: tokens logged by the app x official list price,2026-11-21,"boilers-datasheet.pdf (1 page): 939 input, 192 output, 542 thinking tokens; 82 s"
+One Nano Banana image (2K),0.061,5.7,measured: tokens logged in production x official list price,2026-10-23,"illustrate call: 1,325 input, 1,680 image output, 1,101-1,234 thinking tokens; Google lists a 2K image alone at USD 0.05"
+One World Labs world (marble-1.1-plus),1.20-2.40,111.6-223.1,official price page (docs.worldlabs.ai/api/pricing) as recorded in docs/research/factory-world-mvp.md,2026-10-12,"1,500-3,000 credits at USD 1 per 1,250 credits; not from billing"

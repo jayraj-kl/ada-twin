@@ -28,6 +28,7 @@
     "@repo/logger": "workspace:*",
     "@repo/sim": "workspace:*",
     "jpeg-js": "0.4.4",
+    "pdfjs-dist": "5.4.296",
     "pngjs": "7.0.0",
     "zod": "^4.6.6"
   }

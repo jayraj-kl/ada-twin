@@ -1,5 +1,6 @@
 import { API } from "./models";
 
+import { t } from "@/lib/i18n";
 /** An answer from the API that was not a success, with its status. */
 export class ServerError extends Error {
   constructor(
@@ -33,7 +34,7 @@ export async function server<T>(
   const answer = await response.json().catch(() => null);
   if (!response.ok) {
     throw new ServerError(
-      answer?.error ?? `The API answered HTTP ${response.status}`,
+      answer?.error ?? t("The API answered HTTP {0}", { 0: response.status }),
       response.status,
     );
   }

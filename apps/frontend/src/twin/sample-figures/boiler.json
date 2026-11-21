@@ -1,0 +1,317 @@
+{
+  "world": "boiler",
+  "model": "gemini-3.5-flash",
+  "recordedAt": "2026-11-20",
+  "machines": {
+    "boiler-1": {
+      "params": {
+        "mtbf": {
+          "value": 21960,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "feed-pumps-log.pdf",
+            "page": 2,
+            "quote": "Mean time between failures (MTBF): 6.1 running hours.",
+            "documentKind": "plant-record"
+          }
+        },
+        "mttr": {
+          "value": 1530,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "feed-pumps-log.pdf",
+            "page": 2,
+            "quote": "Mean time to repair (MTTR): 25.5 min.",
+            "documentKind": "plant-record"
+          }
+        },
+        "cycleTime": {
+          "value": 70,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "feed-pumps-datasheet.pdf",
+            "page": 1,
+            "quote": "Cycle time: 70 s per batch.",
+            "documentKind": "datasheet"
+          }
+        },
+        "cycleTimeVariation": {
+          "value": 0.2,
+          "unit": "share",
+          "provenance": {
+            "kind": "doc",
+            "document": "feed-pumps-datasheet.pdf",
+            "page": 1,
+            "quote": "Cycle-time variation (standard deviation divided by mean): 0.20.",
+            "documentKind": "datasheet"
+          }
+        },
+        "scrapRate": {
+          "value": 0.005,
+          "unit": "share",
+          "provenance": {
+            "kind": "doc",
+            "document": "feed-pumps-datasheet.pdf",
+            "page": 1,
+            "quote": "Batches rejected for off-specification feedwater: 0.5% of batches.",
+            "documentKind": "datasheet"
+          }
+        }
+      },
+      "baselines": {
+        "mtbf": {
+          "low": 4197690000,
+          "high": 7477171200,
+          "unit": "s",
+          "basis": "calendar",
+          "document": "feed-pumps-reference.pdf",
+          "page": 1,
+          "quote": "Published MTBF for the class ranges from 1,166,025 to 2,076,992 calendar hours."
+        },
+        "mttr": {
+          "low": 20412,
+          "high": 26640,
+          "unit": "s",
+          "basis": "calendar",
+          "document": "feed-pumps-reference.pdf",
+          "page": 1,
+          "quote": "Published MTTR for the class ranges from 5.67 to 7.40 hours."
+        }
+      }
+    },
+    "boiler-2": {
+      "params": {
+        "mtbf": {
+          "value": 11160,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "boilers-log.pdf",
+            "page": 3,
+            "quote": "Mean time between failures (MTBF): 3.1 running hours.",
+            "documentKind": "plant-record"
+          }
+        },
+        "mttr": {
+          "value": 2406,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "boilers-log.pdf",
+            "page": 3,
+            "quote": "Mean time to repair (MTTR): 40.1 min.",
+            "documentKind": "plant-record"
+          }
+        },
+        "cycleTime": {
+          "value": 170,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "boilers-datasheet.pdf",
+            "page": 1,
+            "quote": "Cycle time: 170 s per batch.",
+            "documentKind": "datasheet"
+          }
+        },
+        "cycleTimeVariation": {
+          "value": 0.25,
+          "unit": "share",
+          "provenance": {
+            "kind": "doc",
+            "document": "boilers-datasheet.pdf",
+            "page": 1,
+            "quote": "Cycle-time variation (standard deviation divided by mean): 0.25.",
+            "documentKind": "datasheet"
+          }
+        },
+        "scrapRate": {
+          "value": 0.01,
+          "unit": "share",
+          "provenance": {
+            "kind": "doc",
+            "document": "boilers-datasheet.pdf",
+            "page": 1,
+            "quote": "Batches rejected for wet steam or low pressure: 1% of batches.",
+            "documentKind": "datasheet"
+          }
+        }
+      },
+      "baselines": {
+        "mtbf": {
+          "low": 95972760,
+          "high": 422199720,
+          "unit": "s",
+          "basis": "calendar",
+          "document": "boilers-reference.pdf",
+          "page": 1,
+          "quote": "Published MTBF for the class ranges from 26,659.1 to 117,277.7 calendar hours."
+        },
+        "mttr": {
+          "low": 160668,
+          "high": 177120,
+          "unit": "s",
+          "basis": "calendar",
+          "document": "boilers-reference.pdf",
+          "page": 1,
+          "quote": "Published MTTR for the class ranges from 44.63 to 49.20 hours."
+        }
+      }
+    },
+    "boiler-3": {
+      "params": {
+        "mtbf": {
+          "value": 15480,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "control-panel-log.pdf",
+            "page": 2,
+            "quote": "Mean time between failures (MTBF): 4.3 running hours.",
+            "documentKind": "plant-record"
+          }
+        },
+        "mttr": {
+          "value": 2082,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "control-panel-log.pdf",
+            "page": 2,
+            "quote": "Mean time to repair (MTTR): 34.7 min.",
+            "documentKind": "plant-record"
+          }
+        },
+        "cycleTime": {
+          "value": 120,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "control-panel-datasheet.pdf",
+            "page": 1,
+            "quote": "Cycle time: 120 s per batch.",
+            "documentKind": "datasheet"
+          }
+        },
+        "cycleTimeVariation": {
+          "value": 0.3,
+          "unit": "share",
+          "provenance": {
+            "kind": "doc",
+            "document": "control-panel-datasheet.pdf",
+            "page": 1,
+            "quote": "Cycle-time variation (standard deviation divided by mean): 0.30.",
+            "documentKind": "datasheet"
+          }
+        },
+        "scrapRate": {
+          "value": 0.02,
+          "unit": "share",
+          "provenance": {
+            "kind": "doc",
+            "document": "control-panel-datasheet.pdf",
+            "page": 1,
+            "quote": "Batches held and rejected at the check: 2% of batches.",
+            "documentKind": "datasheet"
+          }
+        }
+      },
+      "baselines": {
+        "mtbf": {
+          "low": 37243008,
+          "high": 5932353600,
+          "unit": "s",
+          "basis": "calendar",
+          "document": "control-panel-reference.pdf",
+          "page": 1,
+          "quote": "Published MTBF for the class ranges from 10,345.28 to 1,647,876 calendar hours."
+        },
+        "mttr": {
+          "low": 4572,
+          "high": 13248,
+          "unit": "s",
+          "basis": "calendar",
+          "document": "control-panel-reference.pdf",
+          "page": 1,
+          "quote": "Published MTTR for the class ranges from 1.27 to 3.68 hours."
+        }
+      }
+    },
+    "boiler-4": {
+      "params": {
+        "mtbf": {
+          "value": 31680,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "gas-valve-trains-log.pdf",
+            "page": 2,
+            "quote": "Mean time between failures (MTBF): 8.8 running hours.",
+            "documentKind": "plant-record"
+          }
+        },
+        "mttr": {
+          "value": 2106,
+          "unit": "s",
+          "provenance": {
+            "kind": "doc",
+            "document": "gas-valve-trains-log.pdf",
+            "page": 2,
+            "quote": "Mean time to repair (MTTR): 35.1 min.",
+            "documentKind": "plant-record"
+          }
+        }
+      },
+      "baselines": {
+        "mtbf": {
+          "low": 3188858400,
+          "high": 6587787600,
+          "unit": "s",
+          "basis": "calendar",
+          "document": "gas-valve-trains-reference.pdf",
+          "page": 1,
+          "quote": "Published MTBF for the class ranges from 885,794 to 1,829,941 calendar hours."
+        },
+        "mttr": {
+          "low": 10800,
+          "high": 66312,
+          "unit": "s",
+          "basis": "calendar",
+          "document": "gas-valve-trains-reference.pdf",
+          "page": 1,
+          "quote": "Published MTTR for the class ranges from 3.00 to 18.42 hours."
+        }
+      }
+    }
+  },
+  "costs": {
+    "contributionPerPart": {
+      "value": 1800,
+      "document": "cost-sheet.pdf",
+      "page": 1,
+      "quote": "Value of a batch not delivered: ₹1,800 per batch."
+    },
+    "scrapCostPerPart": {
+      "value": 650,
+      "document": "cost-sheet.pdf",
+      "page": 1,
+      "quote": "Cost of a rejected batch: ₹650 per batch."
+    },
+    "technicianPerHour": {
+      "value": 600,
+      "document": "cost-sheet.pdf",
+      "page": 1,
+      "quote": "Maintenance technician, loaded cost: ₹600 per hour."
+    },
+    "sparesPerRepair": {
+      "value": 1200,
+      "document": "cost-sheet.pdf",
+      "page": 1,
+      "quote": "Spares and consumables per breakdown repair: ₹1,200 per repair on average."
+    }
+  },
+  "costsRecordedAt": "2026-11-20"
+}

@@ -34,6 +34,7 @@ import {
   freePosition,
 } from "./flow";
 
+import { t } from "@/lib/i18n";
 export interface FlowMachine {
   id: string;
   name: string;
@@ -66,7 +67,11 @@ function MemberNodeView({ data, selected }: NodeProps<MemberNode>) {
   const canNeed = data.kind === "station" || data.kind === "source";
   return (
     <div
-      className={cn(ui.flowNode, ui[`flow-${data.kind}`], selected && ui.flowNodeSelected)}
+      className={cn(
+        ui.flowNode,
+        ui[`flow-${data.kind}`],
+        selected && ui.flowNodeSelected,
+      )}
       style={data.color ? { borderLeftColor: data.color } : undefined}
     >
       {support && (
@@ -111,17 +116,21 @@ const without = (links: FlowLink[] | undefined, id: string) =>
 
 function extraDetail(extra: ExtraNode): string | undefined {
   if (extra.kind === "source") {
-    return `one part every ${extra.value ?? EXTRA_DEFAULTS.source.value} s`;
+    return t("one part every {0} s", {
+      0: extra.value ?? EXTRA_DEFAULTS.source.value,
+    });
   }
   if (extra.kind === "buffer") {
-    return `holds ${extra.value ?? EXTRA_DEFAULTS.buffer.value} parts`;
+    return t("holds {0} parts", {
+      0: extra.value ?? EXTRA_DEFAULTS.buffer.value,
+    });
   }
   return undefined;
 }
 
 function machineDetail({ count, auxiliary }: FlowMachine) {
   if (count <= 1) return undefined;
-  return auxiliary ? `${count} units` : `${count} in parallel`;
+  return auxiliary ? `${count} units` : t("{0} in parallel", { 0: count });
 }
 
 /**
@@ -393,17 +402,14 @@ export function FlowEditor({
   const toolbar = (
     <div className={ui.row}>
       {(["source", "buffer", "sink"] as const).map((kind) => (
-        <button
-          key={kind}
-          className={ui.button}
-          onClick={() => addExtra(kind)}
-        >
-          Add a {kind}
+        <button key={kind} className={ui.button} onClick={() => addExtra(kind)}>
+          {t("Add a {0}", { 0: kind })}
         </button>
       ))}
       <span className={ui.hint}>
-        Drag from the dot under one node to the dot on top of another to link
-        them. Click a node or link to change or remove it.
+        {t(
+          "Drag from the dot under one node to the dot on top of another to link them. Click a node or link to change or remove it.",
+        )}
       </span>
     </div>
   );
@@ -439,7 +445,7 @@ export function FlowEditor({
         <div className={ui.row}>
           <div className={cn(ui.field, "min-w-40")} style={{ flex: 1 }}>
             <label htmlFor="flow-name">
-              {KIND_LABELS[selectedExtra.kind]} name
+              {t("{0} name", { 0: KIND_LABELS[selectedExtra.kind] })}
             </label>
             <input
               id="flow-name"
@@ -476,40 +482,40 @@ export function FlowEditor({
             style={{ alignSelf: "flex-end" }}
             onClick={() => removeNode(selectedExtra.id)}
           >
-            Remove
+            {t("Remove")}
           </button>
         </div>
       )}
       {selectedMachine && !selectedMachine.auxiliary && (
         <p className={ui.hint}>
-          {selectedMachine.name} is one of your machines: rename or remove it in
-          the machines panel. If parts never pass through it, mark it auxiliary
-          there.
+          {t(
+            "{0} is one of your machines: rename or remove it in the machines panel. If parts never pass through it, mark it auxiliary there.",
+            { 0: selectedMachine.name },
+          )}
         </p>
       )}
       {selectedMachine?.auxiliary && (
         <div className={ui.stack}>
           <p className={ui.hint}>
-            {selectedMachine.name} is auxiliary: parts never pass through it,
-            but everything that needs it stops while it is down.
+            {t(
+              "{0} is auxiliary: parts never pass through it, but everything that needs it stops while it is down.",
+              { 0: selectedMachine.name },
+            )}
           </p>
           {neededBy.map((link) => (
             <div key={link.to} className={ui.spread}>
               <span>
-                Needed by <strong>{nameOf(link.to)}</strong>
+                {t("Needed by")} <strong>{nameOf(link.to)}</strong>
               </span>
-              <button
-                className={ui.button}
-                onClick={() => removeNeed(link)}
-              >
-                Remove
+              <button className={ui.button} onClick={() => removeNeed(link)}>
+                {t("Remove")}
               </button>
             </div>
           ))}
           {couldNeed.length > 0 && (
             <div className={ui.field}>
               <label htmlFor="flow-need">
-                {neededBy.length > 0 ? "Also needed by" : "Needed by"}
+                {neededBy.length > 0 ? t("Also needed by") : t("Needed by")}
               </label>
               <select
                 id="flow-need"
@@ -521,7 +527,7 @@ export function FlowEditor({
                   }
                 }}
               >
-                <option value="">Choose a machine or source…</option>
+                <option value="">{t("Choose a machine or source…")}</option>
                 {couldNeed.map(({ id, name }) => (
                   <option key={id} value={id}>
                     {name}
@@ -535,22 +541,22 @@ export function FlowEditor({
       {selectedNeed && !selectedExtra && !selectedMachine && (
         <div className={ui.spread}>
           <span>
-            <strong>{nameOf(selectedNeed.from)}</strong> is needed by{" "}
+            <strong>{nameOf(selectedNeed.from)}</strong> {t("is needed by")}{" "}
             <strong>{nameOf(selectedNeed.to)}</strong>
           </span>
           <button
             className={ui.button}
             onClick={() => removeNeed(selectedNeed)}
           >
-            Remove link
+            {t("Remove link")}
           </button>
         </div>
       )}
       {selectedLink && !selectedExtra && !selectedMachine && (
         <div className={ui.spread}>
           <span>
-            Link from <strong>{nameOf(selectedLink.from)}</strong> to{" "}
-            <strong>{nameOf(selectedLink.to)}</strong>
+            {t("Link from")} <strong>{nameOf(selectedLink.from)}</strong>{" "}
+            {t("to")} <strong>{nameOf(selectedLink.to)}</strong>
           </span>
           <button
             className={ui.button}
@@ -564,7 +570,7 @@ export function FlowEditor({
               }))
             }
           >
-            Remove link
+            {t("Remove link")}
           </button>
         </div>
       )}
@@ -599,7 +605,7 @@ export function FlowEditor({
               className="pointer-events-auto flex items-center gap-2 rounded-full border border-border bg-card/90 px-3.5 py-2 text-[13px] font-semibold shadow-hard-sm backdrop-blur-md outline-none hover:border-ink focus-visible:ring-[3px] focus-visible:ring-ring/40"
             >
               <WorkflowIcon className="size-3.5" />
-              Flow tools
+              {t("Flow tools")}
               <ChevronUpIcon className="size-3.5 rotate-180" />
             </button>
           ) : (
@@ -608,7 +614,7 @@ export function FlowEditor({
                 type="button"
                 onClick={() => setFolded(true)}
                 aria-expanded
-                aria-label="Fold the flow tools"
+                aria-label={t("Fold the flow tools")}
                 className="absolute top-2 right-2 grid size-7 place-items-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
               >
                 <ChevronUpIcon className="size-4" />

@@ -114,4 +114,101 @@ describe("fillParameters", () => {
     expect(filled.params.mtbf.value).toBe(50000);
     expect(filled.assumed).toEqual(["mttr"]);
   });
+
+  it("ranks plant records over datasheets and keeps references as baselines", async () => {
+    const pdf = (name: string) => ({
+      name,
+      bytes: new Uint8Array([1]),
+      mimeType: "application/pdf",
+    });
+    const { ask, requests } = scripted((request) => {
+      if (request.search) return [];
+      const name = (request.files?.[0] as { name?: string } | undefined)?.name;
+      if (name === "datasheet.pdf") {
+        return {
+          kind: "datasheet",
+          values: [
+            { param: "mtbf", value: 90000, page: 1, quote: "MTBF 25 h" },
+            {
+              param: "cycleTime",
+              value: 70,
+              page: 1,
+              quote: "Cycle time: 70 s per batch.",
+            },
+          ],
+        };
+      }
+      if (name === "log.pdf") {
+        return {
+          kind: "plant-record",
+          values: [
+            {
+              param: "mtbf",
+              value: 21960,
+              page: 2,
+              quote: "MTBF: 6.1 running hours.",
+            },
+          ],
+        };
+      }
+      // Not told what it is: the reader judges it a reference sheet.
+      return {
+        kind: "reference",
+        values: [{ param: "mtbf", value: 4.2e9, page: 1, quote: "1,166,025 h" }],
+        baselines: [
+          {
+            param: "mtbf",
+            low: 4.2e9,
+            high: 7.5e9,
+            basis: "calendar",
+            page: 1,
+            quote: "ranges from 1,166,025 to 2,076,992 calendar hours",
+          },
+        ],
+      };
+    });
+
+    const filled = await fillParameters(ask, PUMPS, [
+      { ...pdf("datasheet.pdf"), kind: "datasheet" },
+      { ...pdf("log.pdf"), kind: "plant-record" },
+      pdf("reference.pdf"),
+    ]);
+
+    // The plant's own log wins over the maker's figure, and the reference
+    // sheet's class figure is never used as the value.
+    expect(filled.params.mtbf).toEqual({
+      value: 21960,
+      unit: "s",
+      provenance: {
+        kind: "doc",
+        document: "log.pdf",
+        page: 2,
+        quote: "MTBF: 6.1 running hours.",
+        documentKind: "plant-record",
+      },
+    });
+    expect(filled.params.cycleTime.provenance).toMatchObject({
+      document: "datasheet.pdf",
+      documentKind: "datasheet",
+    });
+    expect(filled.baselines.mtbf).toEqual({
+      low: 4.2e9,
+      high: 7.5e9,
+      unit: "s",
+      basis: "calendar",
+      document: "reference.pdf",
+      page: 1,
+      quote: "ranges from 1,166,025 to 2,076,992 calendar hours",
+    });
+    expect(filled.kinds).toEqual({
+      "datasheet.pdf": "datasheet",
+      "log.pdf": "plant-record",
+      "reference.pdf": "reference",
+    });
+    // Only the document nobody had classified was asked what it is.
+    const asked = requests.filter((request) =>
+      request.prompt.includes("Say what the document is"),
+    );
+    expect(asked).toHaveLength(1);
+  });
 });

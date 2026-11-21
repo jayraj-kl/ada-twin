@@ -1,0 +1,9 @@
+service,cost_last_30_days,currency,source
+Cloud Run,NOT AVAILABLE,,"No BigQuery billing export on the project and the Cloud Billing API gives no per-service spend; export it from Console > Billing > Reports"
+Cloud SQL,NOT AVAILABLE,,same as above
+Vertex AI / Gemini,NOT AVAILABLE,,same as above
+Cloud Storage,NOT AVAILABLE,,same as above
+Firebase Hosting,NOT AVAILABLE,,same as above
+Cloud Build,NOT AVAILABLE,,same as above
+Cloud Logging,NOT AVAILABLE,,same as above
+Other,NOT AVAILABLE,,same as above

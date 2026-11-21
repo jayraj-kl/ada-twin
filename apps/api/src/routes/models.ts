@@ -25,5 +25,7 @@ export const modelPicker: MiddlewareHandler = async (c, next) => {
       });
     }
   }
-  await withModelChoice({ text, image }, () => next());
+  // The page's language, for what the agents write for people.
+  const language = c.req.header("x-language") === "hi" ? "hi" : undefined;
+  await withModelChoice({ text, image, language }, () => next());
 };

@@ -20,9 +20,10 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
+import { t } from "@/lib/i18n";
 type Kind = keyof ModelChoice;
 
-const TITLE: Record<Kind, string> = { text: "Text", image: "Images" };
+const TITLE: Record<Kind, string> = { text: t("Text"), image: t("Images") };
 
 /** "Gemini 3.5 Flash" reads as "3.5 Flash" on the button. */
 const short = (label: string) => label.replace(/^Gemini /, "");
@@ -69,7 +70,10 @@ export function ModelPicker() {
         <DropdownMenuTrigger
           aria-label={
             using
-              ? `AI models: ${using.text.label} for text, ${using.image.label} for images`
+              ? t("AI models: {0} for text, {1} for images", {
+                  0: using.text.label,
+                  1: using.image.label,
+                })
               : "AI models"
           }
           className={cn(
@@ -111,7 +115,10 @@ export function ModelHint() {
       choice={choice}
       trigger={
         <DropdownMenuTrigger
-          aria-label={`${TITLE[kind]} model: ${using?.[kind].label ?? "default"}`}
+          aria-label={t("{0} model: {1}", {
+            0: TITLE[kind],
+            1: using?.[kind].label ?? "default",
+          })}
           className="inline-flex items-center gap-0.5 rounded-md px-1 font-medium text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:bg-accent"
         >
           {using ? using[kind].label : "the default"}
@@ -124,22 +131,22 @@ export function ModelHint() {
   return (
     <div
       role="group"
-      aria-label="AI models"
+      aria-label={t("AI models")}
       className="mb-5 flex flex-wrap items-center gap-x-1 gap-y-1 text-sm text-muted-foreground"
     >
       <GeminiLogo className="mr-0.5 size-4 shrink-0" />
-      <span>Runs on</span>
+      <span>{t("Runs on")}</span>
       {inline("text")}
-      <span>for text and</span>
+      <span>{t("for text and")}</span>
       {inline("image")}
-      <span>for images.</span>
+      <span>{t("for images.")}</span>
       <button
         type="button"
         onClick={confirmModels}
-        title="The models stay in the top bar, to change any time"
+        title={t("The models stay in the top bar, to change any time")}
         className="ml-1 rounded-md px-1 font-medium text-foreground/70 underline decoration-border underline-offset-4 outline-none transition-colors hover:text-foreground hover:decoration-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
       >
-        Got it
+        {t("Got it")}
       </button>
     </div>
   );
@@ -197,9 +204,9 @@ function ModelMenu({
             className={row}
           >
             <span className="flex-1 text-muted-foreground">
-              Cannot reach the API
+              {t("Cannot reach the API")}
             </span>
-            <span className="text-xs">Retry</span>
+            <span className="text-xs">{t("Retry")}</span>
           </MenuPrimitive.Item>
         ) : (
           <div className="flex flex-col gap-1 p-1" aria-busy>
@@ -222,12 +229,12 @@ function ModelMenu({
             className={cn(row, "mt-1 text-muted-foreground")}
           >
             <RotateCcwIcon className="size-3.5" />
-            Use the defaults
+            {t("Use the defaults")}
           </MenuPrimitive.Item>
         )}
         {catalog && (
           <p className="mt-1 min-h-8 border-t border-border px-2 pt-1.5 pb-1 text-[11px] leading-snug text-muted-foreground">
-            {note ?? "Used for every AI call from this browser."}
+            {note ?? t("Used for every AI call from this browser.")}
           </p>
         )}
       </DropdownMenuContent>
@@ -290,7 +297,7 @@ function Option({
   price?: number;
   onNote: (note: string) => void;
 }) {
-  const word = isDefault ? "Default" : option.badge;
+  const word = isDefault ? t("Default") : option.badge;
   return (
     <MenuPrimitive.RadioItem
       value={option.id}

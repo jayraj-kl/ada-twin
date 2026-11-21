@@ -1,5 +1,6 @@
 import { type FactoryNode, param, validateGraph } from "@repo/sim";
 
+import { t } from "@/lib/i18n";
 export const PROCESS_KEY = "twin-process";
 export const FLOW_KEY = "twin-flow";
 
@@ -53,17 +54,17 @@ export interface FlowMember {
 }
 
 export const KIND_LABELS: Record<FlowMember["kind"], string> = {
-  source: "Source",
-  station: "Machine",
-  support: "Auxiliary",
-  buffer: "Buffer",
-  sink: "Sink",
+  source: t("Source"),
+  station: t("Machine"),
+  support: t("Auxiliary"),
+  buffer: t("Buffer"),
+  sink: t("Sink"),
 };
 
 // Assumed until the user sets them; the AI drafts structure, not numbers.
 export const EXTRA_DEFAULTS = {
-  source: { value: 90, label: "Seconds between parts" },
-  buffer: { value: 6, label: "Parts it can hold" },
+  source: { value: 90, label: t("Seconds between parts") },
+  buffer: { value: 6, label: t("Parts it can hold") },
 } as const;
 
 const COLUMN_PX = 220;
@@ -153,13 +154,13 @@ export function flowProblems(
     problem
       .replace(/^(Sink|Source) /, "")
       .replace(/"([^"]+)"/g, (quoted, id: string) => names.get(id) ?? quoted)
-      .replace("The graph has no", "The flow has no")
+      .replace(t("The graph has no"), t("The flow has no"))
       .replace(
-        "is support equipment and handles no parts",
-        "is auxiliary, so it cannot be linked to parts",
+        t("is support equipment and handles no parts"),
+        t("is auxiliary, so it cannot be linked to parts"),
       )
-      .replace("but is not support equipment", "but is not auxiliary")
-      .replace("by a station or source", "by a machine or source"),
+      .replace(t("but is not support equipment"), t("but is not auxiliary"))
+      .replace(t("by a station or source"), t("by a machine or source")),
   );
 }
 
@@ -170,8 +171,9 @@ export function flowWarnings(members: FlowMember[], needs: FlowLink[] = []) {
       ({ id, kind }) =>
         kind === "support" && !needs.some(({ from }) => from === id),
     )
-    .map(
-      ({ name }) =>
-        `${name} is needed by nothing, so its failures only cost crew time`,
+    .map(({ name }) =>
+      t("{0} is needed by nothing, so its failures only cost crew time", {
+        0: name,
+      }),
     );
 }

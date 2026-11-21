@@ -38,6 +38,7 @@ import {
   useProjects,
 } from "@/lib/projects";
 
+import { t } from "@/lib/i18n";
 type Editing = { mode: "create" } | { mode: "rename"; project: Project } | null;
 
 function NameDialog({
@@ -71,7 +72,9 @@ function NameDialog({
               createProject(trimmed)
                 .then((project) => navigate(`/p/${project.id}/capture`))
                 .catch((error: unknown) =>
-                  setProblem(error instanceof Error ? error.message : String(error)),
+                  setProblem(
+                    error instanceof Error ? error.message : String(error),
+                  ),
                 )
                 .finally(() => setCreating(false));
             }
@@ -85,35 +88,41 @@ function NameDialog({
             )}
           </div>
           <DialogTitle>
-            {renaming ? "Rename project" : "New project"}
+            {renaming ? t("Rename project") : t("New project")}
           </DialogTitle>
           <DialogDescription>
             {renaming
-              ? "Give this project a new name."
-              : "Name the plant or line you are twinning. You can change it later."}
+              ? t("Give this project a new name.")
+              : t(
+                  "Name the plant or line you are twinning. You can change it later.",
+                )}
           </DialogDescription>
           <div className="grid gap-1.5">
-            <Label htmlFor="project-name">Project name</Label>
+            <Label htmlFor="project-name">{t("Project name")}</Label>
             <Input
               id="project-name"
               autoFocus
               maxLength={60}
-              placeholder="e.g. Pune boiler hall"
+              placeholder={t("e.g. Pune boiler hall")}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
           </div>
           {problem && (
             <p role="alert" className="text-sm text-destructive">
-              The project could not be created: {problem}
+              {t("The project could not be created: {0}", { 0: problem })}
             </p>
           )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose}>
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button type="submit" disabled={!trimmed || creating}>
-              {renaming ? "Save" : creating ? "Creating…" : "Create project"}
+              {renaming
+                ? t("Save")
+                : creating
+                  ? t("Creating…")
+                  : t("Create project")}
               {!renaming && <ArrowRightIcon />}
             </Button>
           </div>
@@ -154,12 +163,16 @@ function ProjectCard({
       >
         <span className="flex flex-wrap gap-1.5">
           <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-ink bg-primary px-2.5 py-0.5 text-[11px] font-semibold text-[#14140f]">
-            Step {reached + 1} of {STEPS.length} · {step.label}
+            {t("Step {0} of {1} · {2}", {
+              0: reached + 1,
+              1: STEPS.length,
+              2: step.label,
+            })}
           </span>
           {project.sample && (
             <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-[#14140f] px-2.5 py-0.5 font-mono text-[11px] font-semibold tracking-[0.08em] text-[#f5f5eb] uppercase dark:border dark:border-border">
               <span className="size-1.5 rounded-full bg-primary" />
-              Sandbox
+              {t("Sandbox")}
             </span>
           )}
         </span>
@@ -177,37 +190,39 @@ function ProjectCard({
             />
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-            <span>Edited {timeAgo(project.updatedAt)}</span>
+            <span>{t("Edited {0}", { 0: timeAgo(project.updatedAt) })}</span>
             <span className="flex items-center gap-1 font-semibold text-foreground opacity-0 transition-opacity group-hover:opacity-100">
-              Open <ArrowRightIcon className="size-3.5" />
+              {t("Open")} <ArrowRightIcon className="size-3.5" />
             </span>
           </div>
         </div>
       </Link>
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label={`Options for ${project.name}`}
+          aria-label={t("Options for {0}", { 0: project.name })}
           className="absolute top-4 right-4 grid size-8 place-items-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:bg-accent"
         >
           <EllipsisIcon className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={onRename}>
-            <PencilIcon /> Rename
+            <PencilIcon /> {t("Rename")}
           </DropdownMenuItem>
           <DropdownMenuItem
             destructive
             onSelect={() => {
               if (
                 window.confirm(
-                  `Delete "${project.name}" and everything saved in it?`,
+                  t('Delete "{0}" and everything saved in it?', {
+                    0: project.name,
+                  }),
                 )
               ) {
                 deleteProject(project.id);
               }
             }}
           >
-            <Trash2Icon /> Delete
+            <Trash2Icon /> {t("Delete")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -249,21 +264,24 @@ export default function WorkspacePage() {
             />
             <div>
               <h1 className="text-3xl font-bold tracking-[-0.03em] sm:text-4xl">
-                Hey {firstName(profile)}{" "}
+                {t("Hey")} {firstName(profile)}{" "}
                 <span className="inline-block origin-[70%_70%] animate-[wave_1.6s_ease-in-out_1]">
                   👋
                 </span>
               </h1>
               <p className="mt-1 text-muted-foreground">
                 {projects.length === 0
-                  ? "Your workspace is ready. Start your first twin."
-                  : `${projects.length} ${projects.length === 1 ? "project" : "projects"} in your workspace.`}
+                  ? t("Your workspace is ready. Start your first twin.")
+                  : t("{0} {1} in your workspace.", {
+                      0: projects.length,
+                      1: projects.length === 1 ? t("project") : t("projects"),
+                    })}
               </p>
             </div>
           </div>
           {projects.length > 0 && (
             <Button onClick={() => setEditing({ mode: "create" })}>
-              <PlusIcon /> New project
+              <PlusIcon /> {t("New project")}
             </Button>
           )}
         </motion.div>
@@ -286,11 +304,11 @@ export default function WorkspacePage() {
               <span>
                 <span className="block text-lg font-bold tracking-tight">
                   {projects.length === 0
-                    ? "Create your first project"
-                    : "New project"}
+                    ? t("Create your first project")
+                    : t("New project")}
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  One project per plant, hall or line
+                  {t("One project per plant, hall or line")}
                 </span>
               </span>
             </button>

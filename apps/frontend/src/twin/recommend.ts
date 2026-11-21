@@ -19,6 +19,7 @@ import {
   stationParam,
 } from "./project";
 
+import { t } from "@/lib/i18n";
 /** One change to the plant that the report can measure. */
 export interface Change {
   id: string;
@@ -161,8 +162,17 @@ export function proposeChanges(run: StoredRun): Change[] {
     const units = bottleneck.units.value;
     changes.push({
       id: `units-${bottleneck.id}`,
-      title: `Add one more unit to ${bottleneck.name}`,
-      detail: `${bottleneck.name} has the least spare capacity: its ${units} ${units === 1 ? "unit is" : "units are"} busy ${percent(kpis[bottleneck.id]?.utilisation ?? 0)} of the shift and down ${percent(kpis[bottleneck.id]?.down ?? 0)}.`,
+      title: t("Add one more unit to {0}", { 0: bottleneck.name }),
+      detail: t(
+        "{0} has the least spare capacity: its {1} {2} busy {3} of the shift and down {4}.",
+        {
+          0: bottleneck.name,
+          1: units,
+          2: units === 1 ? t("unit is") : t("units are"),
+          3: percent(kpis[bottleneck.id]?.utilisation ?? 0),
+          4: percent(kpis[bottleneck.id]?.down ?? 0),
+        },
+      ),
       diffs: [{ type: "add-units", station: bottleneck.id, count: 1 }],
       extraCrews: 0,
     });
@@ -185,10 +195,17 @@ export function proposeChanges(run: StoredRun): Change[] {
     const capacity = buffer.capacity.value;
     changes.push({
       id: `buffer-${buffer.id}`,
-      title: `Double ${buffer.name} to ${capacity * 2} parts`,
+      title: t("Double {0} to {1} parts", { 0: buffer.name, 1: capacity * 2 }),
       detail: isBlocked
-        ? `${blocked.name} sits blocked ${percent(kpis[blocked.id]?.blocked ?? 0)} of the shift waiting for room in ${buffer.name}.`
-        : `${buffer.name} feeds the bottleneck; more room lets it ride out stoppages upstream.`,
+        ? t("{0} sits blocked {1} of the shift waiting for room in {2}.", {
+            0: blocked.name,
+            1: percent(kpis[blocked.id]?.blocked ?? 0),
+            2: buffer.name,
+          })
+        : t(
+            "{0} feeds the bottleneck; more room lets it ride out stoppages upstream.",
+            { 0: buffer.name },
+          ),
       diffs: [
         { type: "resize-buffer", buffer: buffer.id, capacity: capacity * 2 },
       ],
@@ -201,8 +218,16 @@ export function proposeChanges(run: StoredRun): Change[] {
     const minutes = Math.round(failing.mttr.value / 60);
     changes.push({
       id: `repair-${failing.id}`,
-      title: `Halve repair time at ${failing.name}`,
-      detail: `${failing.name} is down ${percent(kpis[failing.id]?.down ?? 0)} of the shift. Spares and tools kept at the station would cut a ${minutes}-minute repair to ${Math.round(minutes / 2)}.`,
+      title: t("Halve repair time at {0}", { 0: failing.name }),
+      detail: t(
+        "{0} is down {1} of the shift. Spares and tools kept at the station would cut a {2}-minute repair to {3}.",
+        {
+          0: failing.name,
+          1: percent(kpis[failing.id]?.down ?? 0),
+          2: minutes,
+          3: Math.round(minutes / 2),
+        },
+      ),
       diffs: [
         {
           type: "set-param",
@@ -217,9 +242,10 @@ export function proposeChanges(run: StoredRun): Change[] {
 
   changes.push({
     id: "crew",
-    title: "Add a maintenance crew",
-    detail:
+    title: t("Add a maintenance crew"),
+    detail: t(
       "A second crew only helps when breakdowns queue behind each other; the measurement shows whether they did.",
+    ),
     diffs: [],
     extraCrews: 1,
   });

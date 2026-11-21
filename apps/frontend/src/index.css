@@ -3,6 +3,10 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource/geist-mono/400.css";
 @import "@fontsource/geist-mono/600.css";
+/* Devanagari for Hindi: Inter and Gambetta have none, so it fills in per letter. */
+@import "@fontsource/noto-sans-devanagari/400.css";
+@import "@fontsource/noto-sans-devanagari/600.css";
+@import "@fontsource/noto-sans-devanagari/700.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -101,9 +105,9 @@
 }
 
 @theme inline {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter Variable", "Noto Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
-  --font-display: "Gambetta", ui-serif, Georgia, serif;
+  --font-display: "Gambetta", "Noto Sans Devanagari", ui-serif, Georgia, serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

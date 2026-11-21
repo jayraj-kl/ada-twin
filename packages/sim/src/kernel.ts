@@ -4,7 +4,7 @@ import {
   type SupportNode,
   validateGraph,
 } from "./graph";
-import { type Kpis, type StationTimes, computeKpis } from "./kpi";
+import { type CrewWork, type Kpis, type StationTimes, computeKpis } from "./kpi";
 import { createRandom } from "./random";
 
 // Preventive maintenance takes this share of a full repair.
@@ -259,6 +259,15 @@ export async function simulate(
   let wipTime = 0;
   let decisions = 0;
   let freeCrews = config.maintenanceCrews ?? 1;
+  // What the crews worked on, by machine: hours inside the shift, and jobs.
+  const crewWork = new Map<string, CrewWork>();
+  function countJob(id: string, job: CrewJob["job"], duration: number) {
+    const work = crewWork.get(id) ?? { hours: 0, repairs: 0, services: 0 };
+    work.hours += Math.max(0, Math.min(duration, config.horizon - now)) / 3600;
+    if (job === "repair") work.repairs += 1;
+    else work.services += 1;
+    crewWork.set(id, work);
+  }
   let tickDue = false;
   const jobs: CrewJob[] = [];
 
@@ -719,6 +728,7 @@ export async function simulate(
     const serviced = unit;
     const index = support.units.indexOf(serviced);
     const id = support.node.id;
+    countJob(id, job.job, duration);
     freeCrews -= 1;
     emit({ time: now, type: `${job.job}-start`, node: id, unit: index });
     schedule(now + duration, () => {
@@ -752,6 +762,7 @@ export async function simulate(
     }
     const serviced = unit;
     const index = station.units.indexOf(serviced);
+    countJob(id, job.job, duration);
     freeCrews -= 1;
     emit({ time: now, type: `${job.job}-start`, node: id, unit: index });
     schedule(now + duration, () => {
@@ -1002,6 +1013,7 @@ export async function simulate(
         id: support.node.id,
         downTime: support.downTime,
       })),
+      crew: crewWork,
     }),
   };
 }

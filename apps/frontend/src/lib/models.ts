@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { language } from "./i18n";
 import { readJson, writeJson } from "./storage";
 
 export const API = import.meta.env.VITE_API_URL!;
@@ -81,6 +82,8 @@ export function modelHeaders(): Record<string, string> {
   return {
     ...(text ? { "X-Text-Model": text } : {}),
     ...(image ? { "X-Image-Model": image } : {}),
+    // The language the agents write in for people.
+    ...(language === "hi" ? { "X-Language": "hi" } : {}),
   };
 }
 

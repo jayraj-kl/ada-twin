@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import type { Change, MeasuredChange } from "@/twin/recommend";
 import { signed } from "./format";
 
+import { t } from "@/lib/i18n";
 export interface DesignChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -91,7 +92,7 @@ export function DesignChat({
             aria-expanded={open}
             className="flex items-center gap-1.5 rounded-full px-1 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
           >
-            <SparklesIcon className="size-3.5" /> Design assistant
+            <SparklesIcon className="size-3.5" /> {t("Design assistant")}
             {open ? (
               <ChevronDownIcon className="size-3.5 text-muted-foreground" />
             ) : (
@@ -103,7 +104,7 @@ export function DesignChat({
             onClick={onClear}
             className="rounded-full px-2 py-0.5 text-xs text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
           >
-            Clear
+            {t("Clear")}
           </button>
         </div>
       )}
@@ -161,7 +162,7 @@ export function DesignChat({
                     }}
                   />
                 ))}
-                <span className="sr-only">Working on it</span>
+                <span className="sr-only">{t("Working on it")}</span>
               </li>
             )}
           </motion.ol>
@@ -198,7 +199,7 @@ export function DesignChat({
         className="flex items-end gap-2 rounded-[22px] border border-ink bg-card p-1.5 pl-3 shadow-hard-sm transition-shadow focus-within:shadow-hard"
       >
         <label htmlFor="design-chat" className="sr-only">
-          Tell the AI what you would change in the plant
+          {t("Tell the AI what you would change in the plant")}
         </label>
         <textarea
           id="design-chat"
@@ -216,12 +217,12 @@ export function DesignChat({
               submit();
             }
           }}
-          placeholder={disabled ?? "What would you change?"}
+          placeholder={disabled ?? t("What would you change?")}
           className="max-h-32 min-h-9 flex-1 resize-none self-center bg-transparent py-1.5 text-sm outline-none field-sizing-content placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
         />
         <motion.button
           type="submit"
-          aria-label="Send to the AI"
+          aria-label={t("Send to the AI")}
           disabled={!draft.trim() || busy || Boolean(disabled)}
           whileTap={{ scale: motionTokens.scale.press }}
           className="grid size-9 shrink-0 place-items-center rounded-full border border-ink bg-primary text-[#14140f] outline-none transition-opacity hover:shadow-hard-sm focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:opacity-40 disabled:hover:shadow-none"
@@ -278,12 +279,14 @@ function Proposals({
                       ? "text-success"
                       : "text-muted-foreground",
                 )}
-                title="Parts per shift it adds to the redesign, on standard rules"
+                title={t(
+                  "Parts per shift it adds to the redesign, on standard rules",
+                )}
               >
                 {preview === undefined
                   ? "…"
                   : preview === "failed"
-                    ? "does not fit"
+                    ? t("does not fit")
                     : `${signed(preview)}/shift`}
               </span>
             </div>
@@ -301,7 +304,7 @@ function Proposals({
                       redesign
                     </>
                   ) : (
-                    "Dropped"
+                    t("Dropped")
                   )}
                 </span>
               ) : (
@@ -312,14 +315,14 @@ function Proposals({
                     onClick={() => onKeep(message.id, [change])}
                     className="flex items-center gap-1 rounded-full border border-ink bg-primary px-2.5 py-0.5 text-xs font-semibold text-[#14140f] outline-none hover:shadow-hard-sm focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:opacity-40 disabled:hover:shadow-none"
                   >
-                    <CheckIcon className="size-3" /> Keep
+                    <CheckIcon className="size-3" /> {t("Keep")}
                   </button>
                   <button
                     type="button"
                     onClick={() => onDrop(message.id, change.id)}
                     className="flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground outline-none hover:border-ink hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
                   >
-                    <XIcon className="size-3" /> Drop
+                    <XIcon className="size-3" /> {t("Drop")}
                   </button>
                 </>
               )}
@@ -338,7 +341,7 @@ function Proposals({
           }
           className="self-start rounded-full px-2 py-0.5 text-xs font-semibold text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
-          Keep all {pending.length}
+          {t("Keep all {0}", { 0: pending.length })}
         </button>
       )}
     </div>

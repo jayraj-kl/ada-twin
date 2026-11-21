@@ -53,3 +53,6 @@ assets/adatwin-pitch-v2-4k60.mp4
 
 # landing page explorations, kept locally only
 landing-lab/
+
+# Vitest cache
+tests/.vitest/

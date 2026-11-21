@@ -2,6 +2,7 @@ import type { FactoryGraph, Scenario, SimEvent } from "@repo/sim";
 import type { RunLine } from "./api";
 import type { AgentSpec, DecisionRecord, StoredRun } from "./project";
 
+import { t } from "@/lib/i18n";
 /** A shift for the API to run. */
 export interface RunRequest {
   graph: FactoryGraph;
@@ -78,7 +79,8 @@ export async function runShift(
         case "error":
           throw new Error(line.message);
         case "done": {
-          if (!started) throw new Error("The shift finished before it started");
+          if (!started)
+            throw new Error(t("The shift finished before it started"));
           const { type: _, ...opening } = started;
           finished = {
             ...opening,
@@ -105,6 +107,6 @@ export async function runShift(
     },
     signal,
   );
-  if (!finished) throw new Error("The shift ended before it finished");
+  if (!finished) throw new Error(t("The shift ended before it finished"));
   return finished;
 }

@@ -33,9 +33,10 @@ import {
   shippedOf,
   shownGain,
 } from "./latest";
-import { usePlantUnit } from "@/scenario/plant";
+import { usePlantUnitLabel } from "@/scenario/plant";
 import { PickedChanges, type Picks, type TrialView } from "./PickedChanges";
 
+import { t } from "@/lib/i18n";
 /** One saved state of the redesign. */
 export interface RedesignVersion {
   at: number;
@@ -47,22 +48,22 @@ const sectionTitle =
   "mb-2 flex items-baseline justify-between gap-2 text-sm font-semibold";
 
 export const KIND_LABEL: Record<ScoutKind, string> = {
-  "new-station": "New machine",
-  "new-support": "New support equipment",
-  spares: "Spare parts",
+  "new-station": t("New machine"),
+  "new-support": t("New support equipment"),
+  spares: t("Spare parts"),
 };
 
 /** Where a change came from, as the chip on its card says it. */
 export const originLabel = (change: Change) =>
   change.origin === "asked"
-    ? "You asked"
+    ? t("You asked")
     : change.origin === "scouted" && change.kind
       ? KIND_LABEL[change.kind]
-      : "Suggested";
+      : t("Suggested");
 
 /** What a change adds to the changes already picked, under its own gain. */
 function OnTop({ value }: { value: number | "failed" | undefined }) {
-  const unit = usePlantUnit();
+  const unit = usePlantUnitLabel();
   if (value === undefined) return null;
   return (
     <span
@@ -74,8 +75,8 @@ function OnTop({ value }: { value: number | "failed" | undefined }) {
       )}
     >
       {value === "failed"
-        ? "not with your picks"
-        : `${signedAverage(value)} ${unit} with your picks`}
+        ? t("not with your picks")
+        : t("{0} {1} with your picks", { 0: signedAverage(value), 1: unit })}
     </span>
   );
 }
@@ -97,10 +98,10 @@ function PickButton({
       aria-pressed={change.added}
       aria-label={
         change.added
-          ? `Remove ${change.title} from the redesign`
-          : `Add ${change.title} to the redesign`
+          ? t("Remove {0} from the redesign", { 0: change.title })
+          : t("Add {0} to the redesign", { 0: change.title })
       }
-      title={change.added ? "Picked: click to take it out" : undefined}
+      title={change.added ? t("Picked: click to take it out") : undefined}
       className={cn(
         "group/pick grid size-8 shrink-0 place-items-center rounded-full border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40",
         change.added
@@ -139,7 +140,7 @@ function Gain({
   if (change.added && gain === undefined) {
     return (
       <span className="shrink-0 text-[11px] text-muted-foreground">
-        in your picks
+        {t("in your picks")}
       </span>
     );
   }
@@ -155,8 +156,8 @@ function Gain({
       {gain === undefined
         ? "…"
         : gain === "failed"
-          ? "not with your picks"
-          : `${signedAverage(gain)}/shift`}
+          ? t("not with your picks")
+          : t("{0}/shift", { 0: signedAverage(gain) })}
       {!change.added && <OnTop value={onTop} />}
     </span>
   );
@@ -201,11 +202,16 @@ function ScoutedRow({
             {change.detail}
           </p>
         )}
-        {!withPicks && change.range && change.range.min !== change.range.max && (
-          <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-            {signed(change.range.min)} to {signed(change.range.max)} by day
-          </p>
-        )}
+        {!withPicks &&
+          change.range &&
+          change.range.min !== change.range.max && (
+            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+              {t("{0} to {1} by day", {
+                0: signed(change.range.min),
+                1: signed(change.range.max),
+              })}
+            </p>
+          )}
         <p className="mt-1 text-[11px] text-muted-foreground">
           {change.sources && change.sources.length > 0 ? (
             <>
@@ -225,7 +231,7 @@ function ScoutedRow({
               ))}
             </>
           ) : (
-            "Estimates are the AI's own; check them before buying."
+            t("Estimates are the AI's own; check them before buying.")
           )}
         </p>
       </div>
@@ -276,24 +282,31 @@ function PlaybookRules({
   playbook: Playbook;
   names: Map<string, string>;
 }) {
-  const unit = usePlantUnit();
+  const unit = usePlantUnitLabel();
   const name = (id: string) => names.get(id) ?? id;
   const release = Object.entries(playbook.release);
   const service = Object.entries(playbook.serviceEveryHours);
   const rules = [
     playbook.repairOrder.length > 0 &&
-      `Repairs go first at ${playbook.repairOrder.map(name).join(", then ")}; otherwise whoever waited longest.`,
+      t("Repairs go first at {0}; otherwise whoever waited longest.", {
+        0: playbook.repairOrder.map(name).join(", then "),
+      }),
     ...release.map(([source, rule]) => {
       const paces = [
         rule.slowAboveWip !== undefined &&
-          `80% above ${rule.slowAboveWip} ${unit} in progress`,
+          t("80% above {0} {1} in progress", { 0: rule.slowAboveWip, 1: unit }),
         rule.fastBelowWip !== undefined && `120% below ${rule.fastBelowWip}`,
       ].filter(Boolean);
-      return `${name(source)}: release at ${paces.join(", ")}, 100% otherwise.`;
+      return t("{0}: release at {1}, 100% otherwise.", {
+        0: name(source),
+        1: paces.join(", "),
+      });
     }),
-    ...service.map(
-      ([machine, hours]) =>
-        `Service ${name(machine)} after every ${averaged(hours)} h of work, when a crew is free.`,
+    ...service.map(([machine, hours]) =>
+      t("Service {0} after every {1} h of work, when a crew is free.", {
+        0: name(machine),
+        1: averaged(hours),
+      }),
     ),
   ].filter(Boolean) as string[];
   return (
@@ -309,8 +322,9 @@ function PlaybookRules({
         </ul>
       ) : (
         <p className="text-muted-foreground">
-          The crew decided much as the standard rules would, so the playbook is
-          the standard rules.
+          {t(
+            "The crew decided much as the standard rules would, so the playbook is the standard rules.",
+          )}
         </p>
       )}
     </div>
@@ -367,7 +381,7 @@ export function ResultsTab({
   scoutNote: string;
   onScout: () => void;
 }) {
-  const unit = usePlantUnit();
+  const unit = usePlantUnitLabel();
   // The run with the picks can add machines the run did not have.
   const names = new Map(
     [...run.graph.nodes, ...(trial.after?.run.graph.nodes ?? [])].map(
@@ -385,10 +399,10 @@ export function ResultsTab({
     /** Each day of this column; null while it is measured. */
     days: Kpis[] | null;
   }[] = [
-    { key: "rules", label: "Standard rules", days: ruleDays },
+    { key: "rules", label: t("Standard rules"), days: ruleDays },
     // Until the playbook is written, the crew's one real day stands in.
     ...(hasAgents
-      ? [{ key: "agents", label: "Your agents", days: crewDays ?? [kpis] }]
+      ? [{ key: "agents", label: t("Your agents"), days: crewDays ?? [kpis] }]
       : []),
   ];
   const rows: {
@@ -398,16 +412,24 @@ export function ResultsTab({
     digits?: number;
     lowerIsBetter?: boolean;
   }[] = [
-    { label: `${unit[0]!.toUpperCase()}${unit.slice(1)} shipped`, value: (k) => k.completed, show: averaged },
     {
-      label: "Average work in progress",
+      label: t("{0} shipped", {
+        0: `${unit[0]!.toUpperCase()}${unit.slice(1)}`,
+      }),
+      value: (k) => k.completed,
+      show: averaged,
+    },
+    {
+      label: t("Average work in progress"),
       value: (k) => k.averageWip,
       show: (v) => v.toFixed(1),
       digits: 1,
       lowerIsBetter: true,
     },
     {
-      label: `${unit[0]!.toUpperCase()}${unit.slice(1)} scrapped`,
+      label: t("{0} scrapped", {
+        0: `${unit[0]!.toUpperCase()}${unit.slice(1)}`,
+      }),
       value: (k) => k.scrapped,
       show: averaged,
       lowerIsBetter: true,
@@ -415,7 +437,7 @@ export function ResultsTab({
     ...(target
       ? [
           {
-            label: `Of the ${target} target`,
+            label: t("Of the {0} target", { 0: target }),
             value: (k: Kpis) => (k.completed / target) * 100,
             show: (v: number) => `${Math.round(v)}%`,
           },
@@ -458,7 +480,8 @@ export function ResultsTab({
     ? trial.playbookProblem
     : playbookProblem;
   // Once the picks have run, each suggestion shows what it adds on top of them.
-  const listed = suggestions && byShownGain(suggestions, onTop, latest.withPicks);
+  const listed =
+    suggestions && byShownGain(suggestions, onTop, latest.withPicks);
 
   return (
     <div className="flex flex-col gap-6">
@@ -473,18 +496,23 @@ export function ResultsTab({
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {dayCount > 1
-            ? `Averaged over ${dayCount} days, each with its own random events, with the lowest and highest day under each figure. `
-            : "One day of random events. "}
+            ? t(
+                "Averaged over {0} days, each with its own random events, with the lowest and highest day under each figure. ",
+                { 0: dayCount },
+              )
+            : t("One day of random events. ")}
           {hasAgents &&
-            "Your agents worked one day for real; their playbook replays how they worked on the rest. "}
+            t(
+              "Your agents worked one day for real; their playbook replays how they worked on the rest. ",
+            )}
         </p>
       </div>
 
       {after && (
         <p className="-mb-4 text-xs font-medium">
-          With your {picks.count} picked{" "}
-          {picks.count === 1 ? "change" : "changes"}, and what your plant did
-          before them
+          {t("With your")} {picks.count} {t("picked")}{" "}
+          {picks.count === 1 ? "change" : "changes"}
+          {t(", and what your plant did before them")}
         </p>
       )}
       <table className="w-full text-sm">
@@ -533,7 +561,7 @@ export function ResultsTab({
                           {row.show(now)}
                         </span>
                         <span className="block text-[11px] leading-tight text-muted-foreground">
-                          was {row.show(was)}
+                          {t("was {0}", { 0: row.show(was) })}
                         </span>
                         <Delta
                           value={now}
@@ -561,7 +589,7 @@ export function ResultsTab({
                       )}
                       {column.key === "agents" && crewDays && (
                         <span className="block text-[11px] leading-tight text-muted-foreground">
-                          real day {row.show(row.value(kpis))}
+                          {t("real day {0}", { 0: row.show(row.value(kpis)) })}
                         </span>
                       )}
                       {column.key !== "rules" && (
@@ -579,14 +607,16 @@ export function ResultsTab({
             );
           })}
           <tr>
-            <td className="py-2 pr-2 text-muted-foreground">Bottleneck</td>
+            <td className="py-2 pr-2 text-muted-foreground">
+              {t("Bottleneck")}
+            </td>
             {columns.map((column) => (
               <td key={column.key} className="py-2 pl-3 text-right text-xs">
                 {column.days
                   ? (names.get(
                       averageKpis(afterDays(column.key) ?? column.days)
                         .bottleneck ?? "",
-                    ) ?? "None")
+                    ) ?? t("None"))
                   : "–"}
               </td>
             ))}
@@ -601,22 +631,33 @@ export function ResultsTab({
           )}
         >
           {writing
-            ? "Writing the crew's playbook to replay it on the other days…"
+            ? t("Writing the crew's playbook to replay it on the other days…")
             : writeProblem
-              ? `The crew's playbook could not be written (${writeProblem}), so their column is their one real day.`
+              ? t(
+                  "The crew's playbook could not be written ({0}), so their column is their one real day.",
+                  { 0: writeProblem },
+                )
               : replayed === undefined
                 ? !latest.run.playbook
-                  ? "Their column is their one real day; run the shift again to replay the crew on every day."
-                  : "Replaying the crew's playbook on every day…"
+                  ? t(
+                      "Their column is their one real day; run the shift again to replay the crew on every day.",
+                    )
+                  : t("Replaying the crew's playbook on every day…")
                 : faithful
-                  ? `Playbook on the crew's day: ${replayed} ${unit}; the real crew shipped ${realDay}.`
-                  : `Playbook on the crew's day: ${replayed} ${unit}, but the real crew shipped ${realDay}, so treat their averages with care.`}
+                  ? t(
+                      "Playbook on the crew's day: {0} {1}; the real crew shipped {2}.",
+                      { 0: replayed, 1: unit, 2: realDay },
+                    )
+                  : t(
+                      "Playbook on the crew's day: {0} {1}, but the real crew shipped {2}, so treat their averages with care.",
+                      { 0: replayed, 1: unit, 2: realDay },
+                    )}
         </p>
       )}
       {latest.run.playbook && (
         <details className="-mt-3 rounded-2xl border border-border p-3">
           <summary className="cursor-pointer text-xs font-semibold">
-            Crew playbook
+            {t("Crew playbook")}
           </summary>
           <div className="mt-2">
             <PlaybookRules playbook={latest.run.playbook} names={names} />
@@ -627,19 +668,19 @@ export function ResultsTab({
 
       <section>
         <h3 className={sectionTitle}>
-          Suggested changes
+          {t("Suggested changes")}
           <span className="text-[11px] font-normal text-muted-foreground">
             {latest.withPicks
-              ? "each on top of your picks, over the same days"
+              ? t("each on top of your picks, over the same days")
               : picks.count > 0
-                ? "on its own, and on top of your picks"
-                : "each re-simulated on its own, over the same days"}
+                ? t("on its own, and on top of your picks")
+                : t("each re-simulated on its own, over the same days")}
           </span>
         </h3>
         {!listed ? (
-          <p className={ui.hint}>Re-simulating each change…</p>
+          <p className={ui.hint}>{t("Re-simulating each change…")}</p>
         ) : listed.length === 0 ? (
-          <p className={ui.hint}>Nothing stands out to change.</p>
+          <p className={ui.hint}>{t("Nothing stands out to change.")}</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {listed.map((change) => (
@@ -661,18 +702,16 @@ export function ResultsTab({
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {change.detail}
                   </p>
-                  {!latest.withPicks && change.range && change.range.min !== change.range.max && (
-                    <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                      {signed(change.range.min)} to {signed(change.range.max)}{" "}
-                      by day
-                    </p>
-                  )}
+                  {!latest.withPicks &&
+                    change.range &&
+                    change.range.min !== change.range.max && (
+                      <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                        {signed(change.range.min)} {t("to")}{" "}
+                        {signed(change.range.max)} {t("by day")}
+                      </p>
+                    )}
                 </div>
-                <PickButton
-                  change={change}
-                  onAdd={onAdd}
-                  onRemove={onRemove}
-                />
+                <PickButton change={change} onAdd={onAdd} onRemove={onRemove} />
               </li>
             ))}
           </ul>
@@ -681,26 +720,22 @@ export function ResultsTab({
 
       {picks.count > 0 && (
         <div className="-mt-3">
-          <PickedChanges
-            picks={picks}
-            trial={trial}
-            hasAgents={hasAgents}
-          />
+          <PickedChanges picks={picks} trial={trial} hasAgents={hasAgents} />
         </div>
       )}
 
-      <section aria-label="New equipment">
+      <section aria-label={t("New equipment")}>
         <h3 className={sectionTitle}>
-          New equipment
+          {t("New equipment")}
           <span className="text-[11px] font-normal text-muted-foreground">
-            the AI&apos;s ideas, each re-simulated
+            {t("the AI's ideas, each re-simulated")}
           </span>
         </h3>
         {scouted === null && !scouting && (
           <p className={cn(ui.hint, "mb-2")}>
-            Machines, support equipment or spare parts the plant does not have
-            yet, that would fix what this run shows. The AI searches the web for
-            realistic figures, so it takes a minute.
+            {t(
+              "Machines, support equipment or spare parts the plant does not have yet, that would fix what this run shows. The AI searches the web for realistic figures, so it takes a minute.",
+            )}
           </p>
         )}
         {scouted && scouted.length > 0 && (
@@ -726,25 +761,25 @@ export function ResultsTab({
         >
           <TelescopeIcon />
           {scouting
-            ? "Looking and measuring…"
+            ? t("Looking and measuring…")
             : scouted === null
-              ? "Look for new equipment"
-              : "Look again"}
+              ? t("Look for new equipment")
+              : t("Look again")}
         </button>
       </section>
 
       <section>
         <h3 className={sectionTitle}>
-          Where each station&apos;s time went
+          {t("Where each station's time went")}
           <span className="text-[11px] font-normal text-muted-foreground">
             {latest.withPicks
               ? hasAgents
-                ? "with your picks and agents"
-                : "with your picks, standard rules"
+                ? t("with your picks and agents")
+                : t("with your picks, standard rules")
               : showRedesign && redesign
-                ? "redesign, standard rules"
+                ? t("redesign, standard rules")
                 : hasAgents
-                  ? "with your agents"
+                  ? t("with your agents")
                   : "standard rules"}
           </span>
         </h3>
@@ -761,15 +796,18 @@ export function ResultsTab({
                 <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
                   <span className="truncate font-medium">{station.name}</span>
                   <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                    busy {percent(time.utilisation)} · blocked{" "}
-                    {percent(time.blocked)} · down {percent(time.down)}
-                    {stopped > 0 && ` · stopped ${percent(stopped)}`}
+                    {t("busy")} {percent(time.utilisation)} {t("· blocked")}{" "}
+                    {percent(time.blocked)} {t("· down")} {percent(time.down)}
+                    {stopped > 0 &&
+                      t(" · stopped {0}", { 0: percent(stopped) })}
                   </span>
                 </div>
                 <div
                   className={ui.bar}
                   title={
-                    by.length > 0 ? `Stopped by ${by.join(", ")}` : undefined
+                    by.length > 0
+                      ? t("Stopped by {0}", { 0: by.join(", ") })
+                      : undefined
                   }
                 >
                   <div
@@ -795,16 +833,17 @@ export function ResultsTab({
         </ul>
         <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
           <span>
-            <span className={cn(ui.dot, ui.running)} /> busy
+            <span className={cn(ui.dot, ui.running)} /> {t("busy")}
           </span>
           <span>
-            <span className={cn(ui.dot, ui.blocked)} /> blocked
+            <span className={cn(ui.dot, ui.blocked)} /> {t("blocked")}
           </span>
           <span>
-            <span className={cn(ui.dot, ui.down)} /> down
+            <span className={cn(ui.dot, ui.down)} /> {t("down")}
           </span>
           <span>
-            <span className={cn(ui.dot, ui.stopped)} /> stopped by auxiliary
+            <span className={cn(ui.dot, ui.stopped)} />{" "}
+            {t("stopped by auxiliary")}
           </span>
         </p>
       </section>
@@ -812,9 +851,9 @@ export function ResultsTab({
       {supports.length > 0 && (
         <section>
           <h3 className={sectionTitle}>
-            Auxiliary equipment
+            {t("Auxiliary equipment")}
             <span className="text-[11px] font-normal text-muted-foreground">
-              share of the shift down
+              {t("share of the shift down")}
             </span>
           </h3>
           <table className="w-full text-xs">
@@ -834,7 +873,7 @@ export function ResultsTab({
                   <td className="py-1.5 pr-2">
                     {support.name}
                     <div className="text-[11px] text-muted-foreground">
-                      needed by{" "}
+                      {t("needed by")}{" "}
                       {(latest.run.graph.dependencies ?? [])
                         .filter(({ support: id }) => id === support.id)
                         .map(({ neededBy }) => names.get(neededBy) ?? neededBy)
@@ -865,16 +904,19 @@ export function ResultsTab({
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        {latest.withPicks && "With your picks. "}
-        {latest.run.scenario.name}: {latest.run.scenario.shiftHours}-hour
-        shift,{" "}
+        {latest.withPicks && t("With your picks. ")}
+        {latest.run.scenario.name}: {latest.run.scenario.shiftHours}
+        {t("-hour shift,")}{" "}
         {dayCount > 1
-          ? `seeds ${latest.run.seed}–${latest.run.seed + dayCount - 1}`
-          : `seed ${latest.run.seed}`}
-        , {latest.run.maintenanceCrews} maintenance{" "}
-        {latest.run.maintenanceCrews === 1 ? "crew" : "crews"},{" "}
-        {latest.run.decisions.length} agent decisions,{" "}
-        {latest.run.adjustments.length} adjustments to the twin.
+          ? t("seeds {0}–{1}", {
+              0: latest.run.seed,
+              1: latest.run.seed + dayCount - 1,
+            })
+          : t("seed {0}", { 0: latest.run.seed })}
+        , {latest.run.maintenanceCrews} {t("maintenance")}{" "}
+        {latest.run.maintenanceCrews === 1 ? t("crew") : t("crews")},{" "}
+        {latest.run.decisions.length} {t("agent decisions,")}{" "}
+        {latest.run.adjustments.length} {t("adjustments to the twin.")}
       </p>
     </div>
   );
@@ -910,7 +952,7 @@ export function ChangesTab({
   onDrop: (id: string) => void;
   onRestore: (index: number) => void;
 }) {
-  const unit = usePlantUnit();
+  const unit = usePlantUnitLabel();
   const sum = changes.reduce(
     (total, { id }) =>
       total + (typeof alone[id] === "number" ? (alone[id] as number) : 0),
@@ -921,15 +963,27 @@ export function ChangesTab({
       <section>
         <h2 className="text-lg font-semibold">
           {changes.length === 0
-            ? "No changes yet"
-            : `${changes.length} ${changes.length === 1 ? "change" : "changes"} in the redesign`}
+            ? t("No changes yet")
+            : t("{0} {1} in the redesign", {
+                0: changes.length,
+                1: changes.length === 1 ? "change" : "changes",
+              })}
         </h2>
         <p className="mt-1 text-xs text-muted-foreground">
           {changes.length === 0
-            ? "Add a suggested change, or tell the assistant below what you would change. Your twin is not touched until you apply the redesign."
+            ? t(
+                "Add a suggested change, or tell the assistant below what you would change. Your twin is not touched until you apply the redesign.",
+              )
             : together === null
-              ? "Measuring them together…"
-              : `Together ${signedAverage(together)} ${unit} per shift on standard rules; one by one they add up to ${signedAverage(sum)}.`}
+              ? t("Measuring them together…")
+              : t(
+                  "Together {0} {1} per shift on standard rules; one by one they add up to {2}.",
+                  {
+                    0: signedAverage(together),
+                    1: unit,
+                    2: signedAverage(sum),
+                  },
+                )}
         </p>
       </section>
 
@@ -937,11 +991,13 @@ export function ChangesTab({
         <>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="text-muted-foreground">
-              {pricing ? "Looking up costs on the web…" : "Costs from the web"}
+              {pricing
+                ? t("Looking up costs on the web…")
+                : t("Costs from the web")}
             </span>
             <span className="ml-auto flex items-center gap-1.5">
               <label htmlFor="currency" className="sr-only">
-                Currency
+                {t("Currency")}
               </label>
               <select
                 id="currency"
@@ -959,13 +1015,13 @@ export function ChangesTab({
                 disabled={pricing}
                 onClick={onReprice}
               >
-                Look up again
+                {t("Look up again")}
               </button>
             </span>
           </div>
           {costProblem && (
             <p className={cn(ui.poor, "text-xs")}>
-              Costs could not be looked up: {costProblem}
+              {t("Costs could not be looked up: {0}", { 0: costProblem })}
             </p>
           )}
           <ul className="flex flex-col gap-2">
@@ -998,7 +1054,7 @@ export function ChangesTab({
                     <button
                       type="button"
                       onClick={() => onDrop(change.id)}
-                      aria-label={`Drop ${change.title}`}
+                      aria-label={t("Drop {0}", { 0: change.title })}
                       className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
                     >
                       <XIcon className="size-4" />
@@ -1012,7 +1068,7 @@ export function ChangesTab({
                   <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <dt className="text-[11px] text-muted-foreground">
-                        Alone
+                        {t("Alone")}
                       </dt>
                       <dd
                         className={cn(
@@ -1027,13 +1083,16 @@ export function ChangesTab({
                         {gain === undefined
                           ? "…"
                           : gain === "failed"
-                            ? "only with the others"
-                            : `${signedAverage(gain)} ${unit}/shift`}
+                            ? t("only with the others")
+                            : t("{0} {1}/shift", {
+                                0: signedAverage(gain),
+                                1: unit,
+                              })}
                       </dd>
                     </div>
                     <div>
                       <dt className="text-[11px] text-muted-foreground">
-                        Cost
+                        {t("Cost")}
                       </dt>
                       <dd className="font-mono">
                         {!cost ? (
@@ -1044,16 +1103,19 @@ export function ChangesTab({
                           <>
                             {cost.oneOff
                               ? moneyRange(cost.oneOff, cost.currency)
-                              : "No upfront cost"}
+                              : t("No upfront cost")}
                             {cost.yearly && (
                               <div className="text-[11px] text-muted-foreground">
-                                + {moneyRange(cost.yearly, cost.currency)} a
-                                year
+                                {t("+ {0} a year", {
+                                  0: moneyRange(cost.yearly, cost.currency),
+                                })}
                               </div>
                             )}
                             {each !== null && (
                               <div className="text-[11px] text-muted-foreground">
-                                ≈ {money(each, cost.currency)} per extra part
+                                {t("≈ {0} per extra part", {
+                                  0: money(each, cost.currency),
+                                })}
                               </div>
                             )}
                           </>
@@ -1079,7 +1141,7 @@ export function ChangesTab({
                         ))
                       ) : (
                         <span className={ui.fair}>
-                          No source found: the model&apos;s own estimate.
+                          {t("No source found: the model's own estimate.")}
                         </span>
                       )}
                     </p>
@@ -1095,7 +1157,7 @@ export function ChangesTab({
         <section>
           <h3 className={sectionTitle}>
             <span className="flex items-center gap-1.5">
-              <HistoryIcon className="size-3.5" /> Versions
+              <HistoryIcon className="size-3.5" /> {t("Versions")}
             </span>
           </h3>
           <ol className="flex flex-col-reverse gap-1">
@@ -1113,7 +1175,7 @@ export function ChangesTab({
                 </span>
                 {index === history.length - 1 ? (
                   <span className="w-[68px] shrink-0 text-right text-[11px] text-muted-foreground">
-                    current
+                    {t("current")}
                   </span>
                 ) : (
                   <button
@@ -1121,7 +1183,7 @@ export function ChangesTab({
                     onClick={() => onRestore(index)}
                     className="flex w-[68px] shrink-0 items-center justify-end gap-1 rounded-full text-[11px] font-semibold outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40"
                   >
-                    <RotateCcwIcon className="size-3" /> Restore
+                    <RotateCcwIcon className="size-3" /> {t("Restore")}
                   </button>
                 )}
               </li>
@@ -1131,9 +1193,9 @@ export function ChangesTab({
       )}
 
       <p className="rounded-2xl border border-dashed border-border p-3 text-[11px] text-muted-foreground">
-        The 3D view marks the changed machines on your current world. Drawing
-        new equipment into the photo and generating a fresh world from it is not
-        built yet.
+        {t(
+          "The 3D view marks the changed machines on your current world. Drawing new equipment into the photo and generating a fresh world from it is not built yet.",
+        )}
       </p>
     </div>
   );

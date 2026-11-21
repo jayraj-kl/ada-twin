@@ -26,11 +26,7 @@ import {
 import { useModelsConfirmed } from "@/lib/models";
 import { motionTokens } from "@/lib/motion";
 import { useProfile } from "@/lib/profile";
-import {
-  loadProject,
-  useLoadStatus,
-  useSaveStatus,
-} from "@/lib/project-store";
+import { loadProject, useLoadStatus, useSaveStatus } from "@/lib/project-store";
 import {
   ProjectContext,
   STEPS,
@@ -45,6 +41,7 @@ import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 import { ProductTour, TourButton } from "@/tour/ProductTour";
 
+import { t } from "@/lib/i18n";
 // Steps whose page is the world itself, filling everything under the top bar.
 const IMMERSIVE: readonly StepSlug[] = ["twin", "results"];
 
@@ -68,10 +65,10 @@ function SaveIndicator({ projectId }: { projectId: string }) {
   const status = useSaveStatus(projectId);
   const [Icon, label] =
     status === "saving"
-      ? [LoaderCircleIcon, "Saving…"]
+      ? [LoaderCircleIcon, t("Saving…")]
       : status === "failed"
         ? [CloudAlertIcon, "Couldn't save, retrying"]
-        : [CloudCheckIcon, "Saved"];
+        : [CloudCheckIcon, t("Saved")];
   return (
     <span
       role="status"
@@ -109,7 +106,11 @@ function StepCrumb({
       <DropdownMenuTrigger
         data-tour="steps"
         aria-current="page"
-        aria-label={`Step ${current + 1} of ${STEPS.length}: ${STEPS[current]!.label}. Go to another step`}
+        aria-label={t("Step {0} of {1}: {2}. Go to another step", {
+          0: current + 1,
+          1: STEPS.length,
+          2: STEPS[current]!.label,
+        })}
         className="-mx-1 flex shrink-0 items-center gap-1 rounded-md px-1 font-semibold outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:bg-accent"
       >
         {STEPS[current]!.label}
@@ -123,12 +124,16 @@ function StepCrumb({
               key={slug}
               asChild={open}
               disabled={!open}
-              title={open ? blurb : "Not reached yet"}
+              title={open ? blurb : t("Not reached yet")}
               className="data-disabled:cursor-default data-disabled:opacity-50"
             >
               {open ? (
                 <Link to={`/p/${projectId}/${slug}`}>
-                  <StepRow index={index} label={label} here={index === current} />
+                  <StepRow
+                    index={index}
+                    label={label}
+                    here={index === current}
+                  />
                 </Link>
               ) : (
                 <StepRow index={index} label={label} here={false} />
@@ -204,13 +209,17 @@ export default function ProjectLayout() {
       <div className="mx-auto grid min-h-svh max-w-md place-content-center gap-3 px-6 text-center">
         <h1 className="text-xl font-semibold">
           {load === "missing"
-            ? "This project doesn't exist or was deleted"
-            : "This project couldn't be loaded"}
+            ? t("This project doesn't exist or was deleted")
+            : t("This project couldn't be loaded")}
         </h1>
         <p className={ui.hint}>
           {load === "missing"
-            ? "It may have been deleted on another device, or the link is wrong."
-            : "The server didn't answer. Check that the API is running, then try again."}
+            ? t(
+                "It may have been deleted on another device, or the link is wrong.",
+              )
+            : t(
+                "The server didn't answer. Check that the API is running, then try again.",
+              )}
         </p>
         <div className="flex justify-center gap-2">
           {load === "failed" && (
@@ -219,11 +228,11 @@ export default function ProjectLayout() {
               className={cn(ui.button, ui.primary)}
               onClick={() => void loadProject(projectId)}
             >
-              Try again
+              {t("Try again")}
             </button>
           )}
           <Link to="/workspace" className={ui.button}>
-            Back to the workspace
+            {t("Back to the workspace")}
           </Link>
         </div>
       </div>
@@ -252,14 +261,14 @@ export default function ProjectLayout() {
           }
         >
           <nav
-            aria-label="Breadcrumb"
+            aria-label={t("Breadcrumb")}
             className="flex min-w-0 items-center gap-1 text-sm"
           >
             <Link
               to="/workspace"
               className="hidden shrink-0 text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
-              Workspace
+              {t("Workspace")}
             </Link>
             <ChevronRightIcon className="hidden size-3.5 shrink-0 text-muted-foreground sm:block" />
             <span className="min-w-0 truncate text-muted-foreground">
@@ -273,20 +282,17 @@ export default function ProjectLayout() {
             />
             {project.sample && (
               <span
-                title="A sample plant, not your data"
+                title={t("A sample plant, not your data")}
                 className="ml-2 flex shrink-0 items-center gap-1.5 rounded-full bg-[#14140f] px-2.5 py-0.5 font-mono text-[11px] font-semibold tracking-[0.08em] text-[#f5f5eb] uppercase dark:border dark:border-border"
               >
                 <span className="size-1.5 rounded-full bg-primary" />
-                Sandbox
+                {t("Sandbox")}
               </span>
             )}
           </nav>
         </TopBar>
         {project.sample && (
-          <div
-            aria-hidden
-            className="h-1 bg-primary print:hidden"
-          />
+          <div aria-hidden className="h-1 bg-primary print:hidden" />
         )}
         <main
           className={

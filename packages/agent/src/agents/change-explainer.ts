@@ -54,7 +54,7 @@ export async function explainChanges(
   const reply = await ask({
     task: "explain-changes",
     instruction:
-      "You write short, plain reports for plant managers about changes to their plant. You use only the numbers you are given and never invent new ones.",
+      "You write short, plain reports for plant managers about changes to their plant. You use only the numbers you are given and never invent new ones. You write every quantity as digits, never as words, and never round a number further than it is given.",
     prompt: [
       `Scenario: ${options.scenario}.`,
       options.goal ? `Goal: ${options.goal}` : "",

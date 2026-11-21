@@ -17,6 +17,7 @@ import { NumberField } from "@/components/ui/number-field";
 import { ui } from "@/lib/ui";
 import { cn } from "@/lib/utils";
 
+import { t } from "@/lib/i18n";
 const MAX_AGENTS = 6;
 
 export default function AgentsPage() {
@@ -38,12 +39,12 @@ export default function AgentsPage() {
 
   return (
     <>
-      <p className={ui.eyebrow}>Step 4 · Agents</p>
-      <h1 className={ui.title}>Put a crew on the floor</h1>
+      <p className={ui.eyebrow}>{t("Step 4 · Agents")}</p>
+      <h1 className={ui.title}>{t("Put a crew on the floor")}</h1>
       <p className={ui.lede}>
-        Each agent holds one role and makes that role&apos;s decisions during
-        the shift. Their personality changes how they trade output against risk.
-        Roles you leave empty follow standard rules.
+        {t(
+          "Each agent holds one role and makes that role's decisions during the shift. Their personality changes how they trade output against risk. Roles you leave empty follow standard rules.",
+        )}
       </p>
 
       <div className={ui.grid3}>
@@ -60,7 +61,7 @@ export default function AgentsPage() {
                 alt=""
               />
               <div className={ui.field} style={{ flex: 1 }}>
-                <label htmlFor={`${agent.id}-name`}>Name</label>
+                <label htmlFor={`${agent.id}-name`}>{t("Name")}</label>
                 <input
                   id={`${agent.id}-name`}
                   className={ui.input}
@@ -73,7 +74,7 @@ export default function AgentsPage() {
             </div>
             <div className={ui.stack} style={{ gap: 10 }}>
               <div className={ui.field}>
-                <label htmlFor={`${agent.id}-role`}>Role</label>
+                <label htmlFor={`${agent.id}-role`}>{t("Role")}</label>
                 <select
                   id={`${agent.id}-role`}
                   className={ui.input}
@@ -90,7 +91,9 @@ export default function AgentsPage() {
                 </select>
               </div>
               <div className={ui.field}>
-                <label htmlFor={`${agent.id}-persona`}>Personality</label>
+                <label htmlFor={`${agent.id}-persona`}>
+                  {t("Personality")}
+                </label>
                 <select
                   id={`${agent.id}-persona`}
                   className={ui.input}
@@ -108,12 +111,14 @@ export default function AgentsPage() {
               </div>
               <div className={ui.field}>
                 <label htmlFor={`${agent.id}-trait`}>
-                  About them (optional)
+                  {t("About them (optional)")}
                 </label>
                 <input
                   id={`${agent.id}-trait`}
                   className={ui.input}
-                  placeholder="e.g. You have seen the slowest machine fail on hot days."
+                  placeholder={t(
+                    "e.g. You have seen the slowest machine fail on hot days.",
+                  )}
                   value={agent.trait ?? ""}
                   onChange={(event) =>
                     edit(agent.id, { trait: event.target.value || undefined })
@@ -121,7 +126,7 @@ export default function AgentsPage() {
                 />
               </div>
               <p className={ui.hint}>
-                Decides: {ROLE_INFO[agent.role].decides}
+                {t("Decides: {0}", { 0: ROLE_INFO[agent.role].decides })}
               </p>
               <button
                 className={ui.button}
@@ -133,7 +138,7 @@ export default function AgentsPage() {
                   })
                 }
               >
-                Remove
+                {t("Remove")}
               </button>
             </div>
           </div>
@@ -142,7 +147,10 @@ export default function AgentsPage() {
         {agents.length < MAX_AGENTS && (
           <button
             data-tour="agent-add"
-            className={cn(ui.drop, "group content-center rounded-[28px] border-2")}
+            className={cn(
+              ui.drop,
+              "group content-center rounded-[28px] border-2",
+            )}
             onClick={() =>
               setCrew({
                 ...crew,
@@ -150,7 +158,7 @@ export default function AgentsPage() {
                   ...agents,
                   {
                     id: `agent-${Date.now().toString(36)}`,
-                    name: "New agent",
+                    name: t("New agent"),
                     role: emptyRoles[0] ?? "maintenance",
                     persona: "by-the-book",
                   },
@@ -161,8 +169,10 @@ export default function AgentsPage() {
             <span className="mb-2 grid size-12 place-items-center rounded-full border-2 border-ink bg-primary text-[#14140f] transition-transform duration-300 group-hover:rotate-90">
               <PlusIcon className="size-5" />
             </span>
-            <strong>Add an agent</strong>
-            <span>Up to {MAX_AGENTS} · two agents can share a role</span>
+            <strong>{t("Add an agent")}</strong>
+            <span>
+              {t("Up to {0} · two agents can share a role", { 0: MAX_AGENTS })}
+            </span>
           </button>
         )}
       </div>
@@ -171,7 +181,7 @@ export default function AgentsPage() {
         <div className={ui.row}>
           <div className={ui.field}>
             <label htmlFor="tick">
-              Planner and supervisor check in every (minutes)
+              {t("Planner and supervisor check in every (minutes)")}
             </label>
             <NumberField
               id="tick"
@@ -190,20 +200,21 @@ export default function AgentsPage() {
           </div>
           <p className={ui.hint}>
             {emptyRoles.length === 0
-              ? "Every role has an agent."
-              : `No agent for: ${emptyRoles.map((role) => ROLE_INFO[role].title.toLowerCase()).join(", ")}. ${emptyRoles.length === 1 ? "That role follows" : "Those roles follow"} standard rules.`}{" "}
-            Each check-in is one question to Gemini per agent, so shorter
-            intervals make the run take longer.
+              ? t("Every role has an agent.")
+              : `No agent for: ${emptyRoles.map((role) => ROLE_INFO[role].title.toLowerCase()).join(", ")}. ${emptyRoles.length === 1 ? t("That role follows") : t("Those roles follow")} standard rules.`}{" "}
+            {t(
+              "Each check-in is one question to Gemini per agent, so shorter intervals make the run take longer.",
+            )}
           </p>
         </div>
       </div>
 
       <div data-tour="agents-next" className={ui.actions}>
         <Link to={path("results")} className={cn(ui.button, ui.primary)}>
-          Run the shift
+          {t("Run the shift")}
         </Link>
         <Link to={path("scenario")} className={ui.button}>
-          Back
+          {t("Back")}
         </Link>
       </div>
     </>

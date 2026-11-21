@@ -1,6 +1,20 @@
+/**
+ * What a document is to a machine: its own records outrank a datasheet, and a
+ * reference sheet of published class figures is a baseline, never a value.
+ */
+export type DocumentKind = "overview" | "plant-record" | "datasheet" | "reference";
+
 /** Where a parameter's value came from, so the UI can show what is assumed. */
 export type Provenance =
-  | { kind: "doc"; document: string; page?: number }
+  | {
+      kind: "doc";
+      document: string;
+      page?: number;
+      /** The passage the value was read from, word for word. */
+      quote?: string;
+      /** What the document is, as the reader judged it or the user set it. */
+      documentKind?: DocumentKind;
+    }
   | {
       kind: "web";
       url: string;
@@ -16,6 +30,22 @@ export interface Param {
   value: number;
   unit: string;
   provenance: Provenance;
+}
+
+/**
+ * A published range for a machine's class, read from a reference sheet, with
+ * the passage it came from. Calendar-hour figures count every hour of the
+ * year; the sim's MTBF counts running hours only.
+ */
+export interface Baseline {
+  low: number;
+  high: number;
+  /** The parameter's own unit: seconds for MTBF and MTTR. */
+  unit: string;
+  basis: "calendar" | "operating";
+  document: string;
+  page?: number;
+  quote: string;
 }
 
 /** Where a node sits in the 3D world, and the panorama pixel it came from. */

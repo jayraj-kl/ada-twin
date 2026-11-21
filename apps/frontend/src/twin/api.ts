@@ -1,5 +1,8 @@
 import type {
   Adjustment,
+  Baseline,
+  Citation,
+  DocumentKind,
   FactoryGraph,
   GraphDiff,
   Kpis,
@@ -11,6 +14,7 @@ import { API, modelHeaders } from "@/lib/models";
 import type { DecisionRecord } from "./project";
 import type { RunRequest } from "./shift-run";
 
+import { t } from "@/lib/i18n";
 /** A request to the API, with the models picked in this browser. */
 function apiFetch(path: string, init: RequestInit = {}) {
   return fetch(`${API}${path}`, {
@@ -31,7 +35,13 @@ export interface Machine {
 }
 
 export type Provenance =
-  | { kind: "doc"; document: string; page?: number }
+  | {
+      kind: "doc";
+      document: string;
+      page?: number;
+      quote?: string;
+      documentKind?: DocumentKind;
+    }
   | {
       kind: "web";
       url: string;
@@ -57,7 +67,9 @@ export interface Placement {
 async function unwrap<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(body?.error ?? `The API answered HTTP ${response.status}`);
+    throw new Error(
+      body?.error ?? t("The API answered HTTP {0}", { 0: response.status }),
+    );
   }
   return body as T;
 }
@@ -167,7 +179,7 @@ export async function streamRun(
   if (!response.ok || !response.body) {
     const failure = await response.json().catch(() => null);
     throw new Error(
-      failure?.error ?? `The API answered HTTP ${response.status}`,
+      failure?.error ?? t("The API answered HTTP {0}", { 0: response.status }),
     );
   }
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -188,18 +200,65 @@ export async function findParameters(
   machine: Machine,
   documents: File[],
   /** Documents kept with the project, read by the API itself. */
-  kept?: { projectId: string; ids: string[] },
-): Promise<{ params: Record<string, Param>; assumed: string[] }> {
+  kept?: {
+    projectId: string;
+    ids: string[];
+    /** What each kept document is, by id, where that is known. */
+    kinds?: Record<string, DocumentKind>;
+  },
+): Promise<{
+  params: Record<string, Param>;
+  assumed: string[];
+  baselines: Partial<Record<string, Baseline>>;
+  kinds: Record<string, DocumentKind>;
+}> {
   const form = new FormData();
   form.set("machine", JSON.stringify(machine));
   for (const document of documents) form.append("documents", document);
   if (kept && kept.ids.length > 0) {
     form.set("projectId", kept.projectId);
     for (const id of kept.ids) form.append("documentIds", id);
+    if (kept.kinds) form.set("documentKinds", JSON.stringify(kept.kinds));
   }
   return unwrap(
     await apiFetch(`/twin/parameters`, { method: "POST", body: form }),
   );
+}
+
+export type Verdict =
+  | { status: "verified"; page: number }
+  | { status: "failed"; reason: string }
+  | { status: "unverifiable"; reason: string };
+
+/**
+ * Checks cited figures against the documents kept for one machine, one
+ * verdict per claim. Plain text matching on the server; no model is asked.
+ */
+export async function verifyCitations(
+  projectId: string,
+  documents: { id: string; name: string }[],
+  claims: Pick<Citation, "document" | "page" | "quote" | "values">[],
+): Promise<Verdict[]> {
+  const response = await apiFetch(`/twin/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId, documents, claims }),
+  });
+  return (await unwrap<{ verdicts: Verdict[] }>(response)).verdicts;
+}
+
+/** A few sentences of cost feedback on a shift, from the page's own figures. */
+export async function costBrief(body: {
+  plant: string;
+  unit: string;
+  facts: string[];
+}): Promise<string> {
+  const response = await apiFetch(`/twin/cost-brief`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return (await unwrap<{ brief: string }>(response)).brief;
 }
 
 export interface CostRange {
@@ -356,7 +415,12 @@ export interface InlineImage {
  * then revised by its id; otherwise with the turn that revises it next time.
  */
 export type Illustration =
-  | { image: InlineImage | null; text: string; turn?: unknown; stored?: boolean }
+  | {
+      image: InlineImage | null;
+      text: string;
+      turn?: unknown;
+      stored?: boolean;
+    }
   | { error: string };
 
 /** Draws the redesign into a photo of the plant, `count` times over. */

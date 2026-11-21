@@ -67,12 +67,30 @@ import {
 import { FlowEditor, type FlowMachine } from "@/twin/FlowEditor";
 import {
   CAMERA_HEIGHT_M,
+  type KeptDocument,
+  type SavedMachine,
   paramsFor,
   stationParam,
 } from "@/twin/project";
+import {
+  CitationDetails,
+  CitedSource,
+  DocumentTags,
+  useCitationChecks,
+} from "@/twin/Citation";
+import { DOCUMENT_KIND_OPTIONS } from "@/twin/demo-pack";
+import { type DocumentKind, type Scenario, dutyOf } from "@repo/sim";
 import { useProjectWorld } from "@/twin/world";
 
+import { t } from "@/lib/i18n";
 const DRAWER_KEY = "twin-drawer";
+
+/** A machine's details, as their fields are labelled. */
+const FIELD_LABEL = {
+  type: "Type",
+  manufacturer: "Manufacturer",
+  model: "Model",
+} as const;
 const CHAT_KEY = "twin-flow-chat";
 // Enough to follow the conversation; older turns, and their undo, drop off.
 const CHAT_LIMIT = 30;
@@ -119,8 +137,8 @@ function describeChanges(before: Flow, after: Flow): string[] {
   }
   if (linksIn) changes.push(`+${plural(linksIn, "link")}`);
   if (linksOut) changes.push(`−${plural(linksOut, "link")}`);
-  if (needsIn) changes.push(`+${needsIn} needed by`);
-  if (needsOut) changes.push(`−${needsOut} needed by`);
+  if (needsIn) changes.push(t("+{0} needed by", { 0: needsIn }));
+  if (needsOut) changes.push(t("−{0} needed by", { 0: needsOut }));
   const edited = after.extras.filter((extra) => {
     const was = old.get(extra.id);
     return was && (was.name !== extra.name || was.value !== extra.value);
@@ -142,7 +160,9 @@ interface Entry extends Machine {
   /** New equipment an applied redesign added. */
   added?: "redesign";
   /** Documents kept with the project, used to look the machine up. */
-  kept?: { id: string; name: string }[];
+  kept?: KeptDocument[];
+  /** Published class ranges for its figures, read from a reference sheet. */
+  baselines?: SavedMachine["baselines"];
   /** Files picked this visit that could not be kept; used, then forgotten. */
   documents?: File[];
   busy?: boolean;
@@ -167,21 +187,25 @@ function Source({ provenance }: { provenance: Provenance }) {
         href={provenance.url}
         target="_blank"
         rel="noreferrer"
-        title={[provenance.url, provenance.quote && `“${provenance.quote}”`]
+        title={[
+          provenance.url,
+          provenance.quote && `“${provenance.quote}”`,
+          t("Cited, not verified: web pages are not checked yet."),
+        ]
           .filter(Boolean)
           .join("\n")}
         className={cn(ui.tag, ui.tagUser, "max-w-full truncate")}
       >
         {provenance.confidence === "datasheet"
-          ? "Datasheet"
-          : "Industry typical"}{" "}
+          ? t("Datasheet")
+          : t("Industry typical")}{" "}
         · {new URL(provenance.url).hostname}
       </a>
     );
   }
   return (
     <span className={cn(ui.tag, ui.tagAssumed)}>
-      {provenance.kind === "user" ? "Set by you" : "Assumed"}
+      {provenance.kind === "user" ? t("Set by you") : t("Assumed")}
     </span>
   );
 }
@@ -192,6 +216,12 @@ export default function TwinPage() {
   const path = useProjectPath();
   const world = useRef<WorldViewHandle>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
+  // Every figure read from a document is checked against it on each visit.
+  const verdicts = useCitationChecks(projectId, entries as SavedMachine[]);
+  const duty = dutyOf(
+    (getField(projectId, "scenario") as Partial<Scenario> | null)?.shiftHours ??
+      8,
+  );
   const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftCount, setDraftCount] = useState(1);
@@ -215,6 +245,8 @@ export default function TwinPage() {
   const sheetDrag = useDragControls();
   const [view, setView] = useState<"world" | "flow">("world");
   const [expanded, setExpanded] = useState<string | null>(null);
+  // The one cited figure whose passage and checks are open, as "machine:key".
+  const [cited, setCited] = useState<string | null>(null);
   const [help, setHelp] = useState(false);
   const drawerKey = projectKey(projectId, DRAWER_KEY);
   // Unset until the list has loaded: open when there is nothing listed yet.
@@ -259,9 +291,7 @@ export default function TwinPage() {
       setFlow({ ...EMPTY_FLOW, ...rest, needs: rest.needs ?? monitors ?? [] });
 
       const saved = getField(projectId, "machines") as
-        | (Entry & { pin?: Point })[]
-        | null
-        | undefined;
+        (Entry & { pin?: Point })[] | null | undefined;
       if (saved) {
         // Lists saved before a machine could have several pins had one `pin`.
         const entries = saved;
@@ -275,7 +305,9 @@ export default function TwinPage() {
           ),
         );
       }
-      setChat((getState(projectId, CHAT_KEY) as ChatMessage[] | undefined) ?? []);
+      setChat(
+        (getState(projectId, CHAT_KEY) as ChatMessage[] | undefined) ?? [],
+      );
       setProcess((getField(projectId, "process") as string | null) ?? "");
     } catch {
       // A private window or corrupt chat entry just starts empty.
@@ -516,7 +548,7 @@ export default function TwinPage() {
     const replacing = flow.links.length > 0 || flow.extras.length > 0;
     if (
       replacing &&
-      !window.confirm("Replace the current material flow with a new draft?")
+      !window.confirm(t("Replace the current material flow with a new draft?"))
     ) {
       return;
     }
@@ -642,10 +674,7 @@ export default function TwinPage() {
           count,
         }),
       );
-      const placements = await locate(
-        panoramaUrl,
-        machines,
-      );
+      const placements = await locate(panoramaUrl, machines);
       let placed = 0;
       let wanted = 0;
       for (const placement of placements) {
@@ -660,13 +689,18 @@ export default function TwinPage() {
           pins,
           placement:
             placement.note ??
-            (pins.length > 0 ? "Found in the photo" : "Not found in the photo"),
+            (pins.length > 0
+              ? t("Found in the photo")
+              : t("Not found in the photo")),
         });
       }
       setMessage(
         placed === wanted
-          ? `Placed all ${wanted}.`
-          : `Placed ${placed} of ${wanted}. Pin the rest by hand.`,
+          ? t("Placed all {0}.", { 0: wanted })
+          : t("Placed {0} of {1}. Pin the rest by hand.", {
+              0: placed,
+              1: wanted,
+            }),
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -678,7 +712,8 @@ export default function TwinPage() {
   async function research(entry: Entry) {
     update(entry.id, { busy: true, problem: undefined });
     try {
-      const { params } = await findParameters(
+      const kept = entry.kept ?? [];
+      const { params, baselines, kinds } = await findParameters(
         {
           id: entry.id,
           name: entry.name,
@@ -689,9 +724,24 @@ export default function TwinPage() {
           auxiliary: entry.auxiliary,
         },
         entry.documents ?? [],
-        { projectId, ids: (entry.kept ?? []).map(({ id }) => id) },
+        {
+          projectId,
+          ids: kept.map(({ id }) => id),
+          kinds: Object.fromEntries(
+            kept.flatMap(({ id, kind }) => (kind ? [[id, kind]] : [])),
+          ),
+        },
       );
-      update(entry.id, { params, busy: false });
+      update(entry.id, {
+        params,
+        baselines,
+        // What the reader judged each document to be, where nobody had said.
+        kept: kept.map((document) => ({
+          ...document,
+          kind: document.kind ?? kinds[document.name],
+        })),
+        busy: false,
+      });
     } catch (error) {
       update(entry.id, {
         busy: false,
@@ -706,7 +756,10 @@ export default function TwinPage() {
     update(entry.id, { busy: true, problem: undefined });
     const results = await Promise.allSettled(
       files.map((file) =>
-        uploadDocument(projectId, file, { kind: "document", machineId: entry.id }),
+        uploadDocument(projectId, file, {
+          kind: "document",
+          machineId: entry.id,
+        }),
       ),
     );
     const kept = results.flatMap((result) =>
@@ -714,7 +767,9 @@ export default function TwinPage() {
         ? [{ id: result.value.id, name: result.value.name }]
         : [],
     );
-    const failed = files.filter((_, index) => results[index]!.status === "rejected");
+    const failed = files.filter(
+      (_, index) => results[index]!.status === "rejected",
+    );
     setEntries((current) =>
       current.map((item) =>
         item.id === entry.id
@@ -725,7 +780,12 @@ export default function TwinPage() {
               documents: failed.length > 0 ? failed : undefined,
               problem:
                 failed.length > 0
-                  ? `${failed.length} ${failed.length === 1 ? "document was" : "documents were"} not saved; ${failed.length === 1 ? "it is" : "they are"} used for this visit only.`
+                  ? t("{0} {1} not saved; {2} used for this visit only.", {
+                      0: failed.length,
+                      1:
+                        failed.length === 1 ? "document was" : "documents were",
+                      2: failed.length === 1 ? "it is" : "they are",
+                    })
                   : undefined,
             }
           : item,
@@ -745,7 +805,7 @@ export default function TwinPage() {
       const pins = entries.find(({ id }) => id === moving.id)?.pins ?? [];
       update(moving.id, {
         pins: pins.map((pin, index) => (index === moving.index ? point : pin)),
-        placement: "Adjusted by you",
+        placement: t("Adjusted by you"),
       });
       setMoving(null);
       return;
@@ -757,7 +817,7 @@ export default function TwinPage() {
     const pins = entry.pins ?? [];
     // With every unit already pinned, a new click starts the pins over.
     const next = pins.length >= count ? [point] : [...pins, point];
-    update(placing, { pins: next, placement: "Pinned by you" });
+    update(placing, { pins: next, placement: t("Pinned by you") });
     // Stays in placing mode until each unit has its pin.
     if (next.length >= count) setPlacing(null);
   }
@@ -767,7 +827,7 @@ export default function TwinPage() {
     const pins = entries.find(({ id }) => id === moving.id)?.pins ?? [];
     update(moving.id, {
       pins: pins.filter((_, index) => index !== moving.index),
-      placement: "Adjusted by you",
+      placement: t("Adjusted by you"),
     });
     setMoving(null);
   }
@@ -789,7 +849,7 @@ export default function TwinPage() {
               ? ui.pinSelected
               : "",
           )}
-          title="Click to move or remove this pin"
+          title={t("Click to move or remove this pin")}
           onClick={(event) => {
             // Keeps the click from also landing on the world underneath.
             event.stopPropagation();
@@ -816,8 +876,8 @@ export default function TwinPage() {
   const canConfirm = entries.length > 0 && problems.length === 0;
   const confirmReason =
     entries.length === 0
-      ? "Add your machines first"
-      : "The material flow cannot be simulated yet";
+      ? t("Add your machines first")
+      : t("The material flow cannot be simulated yet");
 
   function pinByHand(id: string) {
     setMoving(null);
@@ -841,7 +901,7 @@ export default function TwinPage() {
           {(["type", "manufacturer", "model"] as const).map((field) => (
             <div key={field} className={ui.field}>
               <label htmlFor={`${entry.id}-${field}`}>
-                {field[0]!.toUpperCase() + field.slice(1)}
+                {t(FIELD_LABEL[field])}
               </label>
               <input
                 id={`${entry.id}-${field}`}
@@ -854,7 +914,7 @@ export default function TwinPage() {
             </div>
           ))}
           <div className={ui.field}>
-            <label htmlFor={`${entry.id}-count`}>How many</label>
+            <label htmlFor={`${entry.id}-count`}>{t("How many")}</label>
             <NumberField
               id={`${entry.id}-count`}
               className="h-[38px] w-full"
@@ -870,7 +930,7 @@ export default function TwinPage() {
 
         <fieldset className="flex flex-wrap items-center gap-1.5">
           <legend className="mb-1.5 text-xs font-medium text-muted-foreground">
-            Colour
+            {t("Colour")}
           </legend>
           {MACHINE_COLORS.map((color) => {
             const chosen = entry.color === color;
@@ -878,7 +938,7 @@ export default function TwinPage() {
               <button
                 key={color}
                 type="button"
-                aria-label={`Colour ${color}`}
+                aria-label={t("Colour {0}", { 0: color })}
                 aria-pressed={chosen}
                 onClick={() => update(entry.id, { color })}
                 className={cn(
@@ -900,14 +960,15 @@ export default function TwinPage() {
             onChange={(event) => setAuxiliary(entry.id, event.target.checked)}
           />
           <span>
-            <strong className="text-foreground">Auxiliary</strong>: supports
-            other equipment and handles no parts, like a control cabinet. Only
-            its failures are simulated: what needs it stops while it is down.
+            <strong className="text-foreground">{t("Auxiliary")}</strong>
+            {t(
+              ": supports other equipment and handles no parts, like a control cabinet. Only its failures are simulated: what needs it stops while it is down.",
+            )}
             {entry.auxiliarySuggested && (
               <>
                 {" "}
                 <span className={cn(ui.tag, ui.tagAssumed)}>
-                  Suggested by the draft
+                  {t("Suggested by the draft")}
                 </span>
               </>
             )}
@@ -916,7 +977,7 @@ export default function TwinPage() {
 
         <div className={ui.field}>
           <label htmlFor={`${entry.id}-documents`}>
-            Manuals, datasheets or maintenance records
+            {t("Manuals, datasheets or maintenance records")}
           </label>
           <input
             id={`${entry.id}-documents`}
@@ -936,17 +997,49 @@ export default function TwinPage() {
                   key={document.id}
                   className="flex items-center justify-between gap-2 text-xs"
                 >
-                  <a
-                    href={documentUrl(projectId, document.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="truncate underline-offset-2 hover:underline"
-                  >
-                    {document.name}
-                  </a>
+                  <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <a
+                      href={documentUrl(projectId, document.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate underline-offset-2 hover:underline"
+                    >
+                      {t(document.title ?? document.name)}
+                    </a>
+                    {document.demo !== undefined ? (
+                      <DocumentTags document={document} />
+                    ) : (
+                      <select
+                        aria-label={t("What {0} is", { 0: document.name })}
+                        value={document.kind ?? ""}
+                        onChange={(event) =>
+                          update(entry.id, {
+                            kept: entry.kept!.map((candidate) =>
+                              candidate.id === document.id
+                                ? {
+                                    ...candidate,
+                                    kind:
+                                      (event.target.value as DocumentKind) ||
+                                      undefined,
+                                  }
+                                : candidate,
+                            ),
+                          })
+                        }
+                        className="rounded-full border border-border bg-card px-1.5 py-px text-[11px] text-muted-foreground"
+                      >
+                        <option value="">{t("Kind: ask the AI")}</option>
+                        {DOCUMENT_KIND_OPTIONS.map(([kind, label]) => (
+                          <option key={kind} value={kind}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </span>
                   <button
                     type="button"
-                    aria-label={`Remove ${document.name}`}
+                    aria-label={t("Remove {0}", { 0: document.name })}
                     className="shrink-0 text-muted-foreground hover:text-foreground"
                     onClick={() => dropDocument(entry, document.id)}
                   >
@@ -960,8 +1053,9 @@ export default function TwinPage() {
 
         {infoMissing && (
           <p className={cn(ui.poor, "text-xs")}>
-            Info missing: add the manufacturer and model, or a document, so we
-            can look this machine up.
+            {t(
+              "Info missing: add the manufacturer and model, or a document, so we can look this machine up.",
+            )}
           </p>
         )}
         {entry.problem && (
@@ -983,7 +1077,28 @@ export default function TwinPage() {
                   >
                     {label}
                   </label>
-                  <Source provenance={current.provenance} />
+                  {current.provenance.kind === "doc" ? (
+                    <CitedSource
+                      projectId={projectId}
+                      provenance={current.provenance}
+                      param={current}
+                      paramKey={key}
+                      kept={entry.kept ?? []}
+                      baseline={entry.baselines?.[key]}
+                      verdicts={verdicts[entry.id]}
+                      duty={duty}
+                      open={cited === `${entry.id}:${key}`}
+                      onToggle={() =>
+                        setCited((shown) =>
+                          shown === `${entry.id}:${key}`
+                            ? null
+                            : `${entry.id}:${key}`,
+                        )
+                      }
+                    />
+                  ) : (
+                    <Source provenance={current.provenance} />
+                  )}
                 </div>
                 <NumberField
                   id={`${entry.id}-${key}`}
@@ -1005,6 +1120,21 @@ export default function TwinPage() {
                     })
                   }
                 />
+                {current.provenance.kind === "doc" &&
+                  cited === `${entry.id}:${key}` && (
+                    <div className="col-span-2">
+                      <CitationDetails
+                        projectId={projectId}
+                        provenance={current.provenance}
+                        param={current}
+                        paramKey={key}
+                        kept={entry.kept ?? []}
+                        baseline={entry.baselines?.[key]}
+                        verdicts={verdicts[entry.id]}
+                        duty={duty}
+                      />
+                    </div>
+                  )}
               </li>
             );
           })}
@@ -1014,12 +1144,12 @@ export default function TwinPage() {
           <button className={ui.button} onClick={() => pinByHand(entry.id)}>
             <PinIcon />
             {pinned === 0
-              ? "Pin by hand"
+              ? t("Pin by hand")
               : pinned < count
-                ? `Pin the other ${count - pinned}`
+                ? t("Pin the other {0}", { 0: count - pinned })
                 : count === 1
-                  ? "Move pin"
-                  : "Pin again"}
+                  ? t("Move pin")
+                  : t("Pin again")}
           </button>
           <button
             className={ui.button}
@@ -1027,7 +1157,7 @@ export default function TwinPage() {
             onClick={() => research(entry)}
           >
             <SearchIcon />
-            {entry.busy ? "Researching…" : "Find its parameters"}
+            {entry.busy ? t("Researching…") : t("Find its parameters")}
           </button>
         </div>
       </div>
@@ -1038,17 +1168,21 @@ export default function TwinPage() {
     <>
       <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
         <div>
-          <h2 className="text-lg font-bold tracking-tight">Machines</h2>
+          <h2 className="text-lg font-bold tracking-tight">{t("Machines")}</h2>
           <p className="text-xs text-muted-foreground">
             {entries.length === 0
-              ? "Nothing listed yet"
-              : `${entries.length} listed · ${pinnedUnits} of ${units} placed`}
+              ? t("Nothing listed yet")
+              : t("{0} listed · {1} of {2} placed", {
+                  0: entries.length,
+                  1: pinnedUnits,
+                  2: units,
+                })}
           </p>
         </div>
         <button
           type="button"
           onClick={() => setDrawer(false)}
-          aria-label="Close the machines panel"
+          aria-label={t("Close the machines panel")}
           className="grid size-9 place-items-center rounded-full border border-border outline-none hover:border-ink focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
           <XIcon className="size-4" />
@@ -1063,17 +1197,17 @@ export default function TwinPage() {
         }}
       >
         <div className={cn(ui.field, "min-w-0 flex-1")}>
-          <label htmlFor="draft-name">Add a machine</label>
+          <label htmlFor="draft-name">{t("Add a machine")}</label>
           <input
             id="draft-name"
             className={ui.input}
-            placeholder="e.g. Feed pumps"
+            placeholder={t("e.g. Feed pumps")}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
           />
         </div>
         <div className={cn(ui.field, "w-28")}>
-          <label htmlFor="draft-count">How many</label>
+          <label htmlFor="draft-count">{t("How many")}</label>
           <NumberField
             id="draft-count"
             className="h-[38px] w-full"
@@ -1089,7 +1223,7 @@ export default function TwinPage() {
           className={cn(ui.primary, "h-9")}
           type="submit"
           disabled={!draft.trim()}
-          aria-label="Add machine"
+          aria-label={t("Add machine")}
         >
           <PlusIcon />
         </button>
@@ -1099,12 +1233,13 @@ export default function TwinPage() {
         {entries.length === 0 ? (
           <div className="px-2 py-6 text-sm text-muted-foreground">
             <p className="font-semibold text-foreground">
-              List each machine on the floor.
+              {t("List each machine on the floor.")}
             </p>
             <p className="mt-1.5">
-              Then press <strong>Find them in the photo</strong> and we pin them
-              in the 3D world. Pin any we miss by hand, and click a pin to move
-              it.
+              {t("Then press")} <strong>{t("Find them in the photo")}</strong>{" "}
+              {t(
+                "and we pin them in the 3D world. Pin any we miss by hand, and click a pin to move it.",
+              )}
             </p>
           </div>
         ) : (
@@ -1115,10 +1250,10 @@ export default function TwinPage() {
               const open = expanded === entry.id;
               const status =
                 pinned === 0
-                  ? "Not placed"
+                  ? t("Not placed")
                   : pinned === count
-                    ? "Placed"
-                    : `${pinned} of ${count} placed`;
+                    ? t("Placed")
+                    : t("{0} of {1} placed", { 0: pinned, 1: count });
               return (
                 <li
                   key={entry.id}
@@ -1148,14 +1283,16 @@ export default function TwinPage() {
                           {entry.added && (
                             <span
                               className="shrink-0 rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold tracking-wide text-[#14140f] uppercase"
-                              title="Added by a redesign you applied. Pin it where it will stand."
+                              title={t(
+                                "Added by a redesign you applied. Pin it where it will stand.",
+                              )}
                             >
-                              New · from redesign
+                              {t("New · from redesign")}
                             </span>
                           )}
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {count > 1 && `${count} units · `}
+                          {count > 1 && t("{0} units · ", { 0: count })}
                           <span
                             className={cn(
                               pinned === count
@@ -1167,7 +1304,7 @@ export default function TwinPage() {
                           >
                             {status}
                           </span>
-                          {entry.auxiliary && " · Auxiliary"}
+                          {entry.auxiliary && ` · ${t("Auxiliary")}`}
                         </span>
                       </span>
                       <ChevronDownIcon
@@ -1179,14 +1316,14 @@ export default function TwinPage() {
                     </button>
                     <DropdownMenu>
                       <DropdownMenuTrigger
-                        aria-label={`Options for ${entry.name}`}
+                        aria-label={t("Options for {0}", { 0: entry.name })}
                         className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:bg-accent"
                       >
                         <EllipsisIcon className="size-4" />
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onSelect={() => pinByHand(entry.id)}>
-                          <PinIcon /> Pin by hand
+                          <PinIcon /> {t("Pin by hand")}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           disabled={
@@ -1197,13 +1334,13 @@ export default function TwinPage() {
                           }
                           onSelect={() => research(entry)}
                         >
-                          <SearchIcon /> Find its parameters
+                          <SearchIcon /> {t("Find its parameters")}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           destructive
                           onSelect={() => removeEntry(entry.id)}
                         >
-                          <Trash2Icon /> Remove
+                          <Trash2Icon /> {t("Remove")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1224,11 +1361,15 @@ export default function TwinPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-bold tracking-tight">
-            Material flow
+            {t("Material flow")}
             <span className="mt-0.5 block font-mono text-xs font-normal text-muted-foreground">
-              {members.length} nodes · {flow.links.length} links
-              {(flow.needs?.length ?? 0) > 0 &&
-                ` · ${flow.needs!.length} needed by`}
+              {t("{0} nodes · {1} links{2}", {
+                0: members.length,
+                1: flow.links.length,
+                2:
+                  (flow.needs?.length ?? 0) > 0 &&
+                  ` · ${flow.needs!.length} needed by`,
+              })}
             </span>
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -1244,7 +1385,7 @@ export default function TwinPage() {
               to={path("capture")}
               className="font-semibold text-foreground underline underline-offset-2"
             >
-              Edit
+              {t("Edit")}
             </Link>
           </p>
           {flowMessage && <p className={cn(ui.hint, "mt-1")}>{flowMessage}</p>}
@@ -1256,7 +1397,7 @@ export default function TwinPage() {
           onClick={draftTheFlow}
         >
           <SparklesIcon />
-          {drafting ? "Drafting…" : "Draft the flow"}
+          {drafting ? t("Drafting…") : t("Draft the flow")}
         </button>
       </div>
 
@@ -1308,14 +1449,14 @@ export default function TwinPage() {
               {flowHeader}
               <div className="grid flex-1 place-items-center text-center text-sm text-muted-foreground">
                 <p>
-                  Add your machines first; each one becomes a node here.
+                  {t("Add your machines first; each one becomes a node here.")}
                   <br />
                   <button
                     type="button"
                     onClick={() => setDrawer(true)}
                     className="mt-2 font-semibold text-foreground underline underline-offset-2"
                   >
-                    Open the machines panel
+                    {t("Open the machines panel")}
                   </button>
                 </p>
               </div>
@@ -1347,14 +1488,15 @@ export default function TwinPage() {
       >
         <div className="pointer-events-auto order-2 flex items-center gap-2 sm:order-none">
           <span className="hidden rounded-full border border-white/15 bg-[#14140f]/75 px-3 py-1.5 text-[11px] font-semibold tracking-[0.08em] text-white uppercase backdrop-blur-md sm:inline-flex">
-            <span className="mr-1.5 text-primary">Step 2</span> Twin
+            <span className="mr-1.5 text-primary">{t("Step 2")}</span>{" "}
+            {t("Twin")}
           </span>
           <div className="relative">
             <button
               type="button"
               onClick={() => setHelp((open) => !open)}
               aria-expanded={help}
-              aria-label="How to use this view"
+              aria-label={t("How to use this view")}
               data-tour="twin-help"
               className={glassButton}
             >
@@ -1370,17 +1512,18 @@ export default function TwinPage() {
                   className="absolute top-11 right-0 z-10 w-72 rounded-2xl border border-white/15 bg-[#14140f]/90 p-4 text-sm text-white/80 backdrop-blur-md sm:right-auto sm:left-0"
                 >
                   <p className="font-semibold text-white">
-                    List your machines, then place them.
+                    {t("List your machines, then place them.")}
                   </p>
                   <p className="mt-1.5">
-                    We look for them in your photo and pin them in the 3D world.
-                    Pin any we miss by hand, and click a pin to move it.
+                    {t(
+                      "We look for them in your photo and pin them in the 3D world. Pin any we miss by hand, and click a pin to move it.",
+                    )}
                   </p>
                   <ul className="mt-3 space-y-1 font-mono text-xs">
-                    <li>W / S · move the camera</li>
-                    <li>Drag · look around</li>
-                    <li>Wheel · zoom</li>
-                    <li>Esc · cancel or close the panel</li>
+                    <li>{t("W / S · move the camera")}</li>
+                    <li>{t("Drag · look around")}</li>
+                    <li>{t("Wheel · zoom")}</li>
+                    <li>{t("Esc · cancel or close the panel")}</li>
                   </ul>
                 </motion.div>
               )}
@@ -1390,7 +1533,7 @@ export default function TwinPage() {
             <button
               type="button"
               onClick={toggleFullscreen}
-              aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+              aria-label={fullscreen ? t("Exit fullscreen") : t("Fullscreen")}
               className={glassButton}
             >
               {fullscreen ? (
@@ -1404,14 +1547,14 @@ export default function TwinPage() {
 
         <div
           role="tablist"
-          aria-label="View"
+          aria-label={t("View")}
           data-tour="twin-view"
           className="pointer-events-auto order-1 flex rounded-full border border-ink bg-card p-1 shadow-hard-sm sm:order-none"
         >
           {(
             [
-              ["world", "3D world", BoxIcon],
-              ["flow", "Material flow", WorkflowIcon],
+              ["world", t("3D world"), BoxIcon],
+              ["flow", t("Material flow"), WorkflowIcon],
             ] as const
           ).map(([key, label, Icon]) => (
             <button
@@ -1463,37 +1606,38 @@ export default function TwinPage() {
             {moving && movingEntry ? (
               <>
                 <span>
-                  Click where{" "}
-                  <strong>{unitName(movingEntry, moving.index)}</strong> really
-                  is.
+                  {t("Click where")}{" "}
+                  <strong>{unitName(movingEntry, moving.index)}</strong>{" "}
+                  {t("really is.")}
                 </span>
                 <span className="flex gap-1.5">
                   <button className={darkPill} onClick={removeMoving}>
-                    Remove this pin
+                    {t("Remove this pin")}
                   </button>
                   <button className={darkPill} onClick={() => setMoving(null)}>
-                    Cancel
+                    {t("Cancel")}
                   </button>
                 </span>
               </>
             ) : placing ? (
               <>
                 <span>
-                  Click where <strong>{placingEntry?.name}</strong>
+                  {t("Click where")} <strong>{placingEntry?.name}</strong>
                   {(placingEntry?.count ?? 1) > 1 &&
                     ` ${((placingEntry?.pins?.length ?? 0) % (placingEntry?.count ?? 1)) + 1} of ${placingEntry?.count}`}{" "}
-                  is.
+                  {t("is.")}
                 </span>
                 <button className={darkPill} onClick={() => setPlacing(null)}>
-                  Cancel
+                  {t("Cancel")}
                 </button>
               </>
             ) : (
               <>
                 <span className="text-white/80">
                   {entries.length === 0
-                    ? "Add a machine first."
-                    : message || `${pinnedUnits} of ${units} placed.`}
+                    ? t("Add a machine first.")
+                    : message ||
+                      t("{0} of {1} placed.", { 0: pinnedUnits, 1: units })}
                 </span>
                 <button
                   className={cn(ui.primary, "h-8")}
@@ -1501,7 +1645,7 @@ export default function TwinPage() {
                   onClick={locateAll}
                 >
                   <ScanSearchIcon />
-                  {locating ? "Looking…" : "Find them in the photo"}
+                  {locating ? t("Looking…") : t("Find them in the photo")}
                 </button>
               </>
             )}
@@ -1512,7 +1656,7 @@ export default function TwinPage() {
               messages={chat}
               busy={asking}
               disabled={
-                entries.length === 0 ? "Add your machines first" : undefined
+                entries.length === 0 ? t("Add your machines first") : undefined
               }
               problems={problems}
               onSend={(text) => void askFlow(text)}
@@ -1530,7 +1674,7 @@ export default function TwinPage() {
               data-tour="machines"
               onClick={() => setDrawer(true)}
             >
-              <ChevronUpIcon /> Machines · {entries.length}
+              <ChevronUpIcon /> {t("Machines ·")} {entries.length}
             </Button>
           )}
           {canConfirm ? (
@@ -1541,7 +1685,7 @@ export default function TwinPage() {
               className="hover:-translate-y-px hover:shadow-hard-sm"
             >
               <Link to={path("scenario")}>
-                Confirm the twin <ArrowRightIcon />
+                {t("Confirm the twin")} <ArrowRightIcon />
               </Link>
             </Button>
           ) : (
@@ -1552,7 +1696,7 @@ export default function TwinPage() {
               className="rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
             >
               <Button size="sm" disabled aria-describedby="confirm-reason">
-                Confirm the twin <ArrowRightIcon />
+                {t("Confirm the twin")} <ArrowRightIcon />
               </Button>
               <span id="confirm-reason" className="sr-only">
                 {confirmReason}
@@ -1571,7 +1715,9 @@ export default function TwinPage() {
           aria-controls="machines-panel"
           data-tour="machines"
           aria-label={
-            drawer ? "Close the machines panel" : "Open the machines panel"
+            drawer
+              ? t("Close the machines panel")
+              : t("Open the machines panel")
           }
           initial={false}
           animate={{ x: drawer ? -DRAWER_PX : 0 }}
@@ -1584,14 +1730,14 @@ export default function TwinPage() {
             <ChevronLeftIcon className="size-4" />
           )}
           <span className="rotate-180 text-xs font-semibold tracking-wide [writing-mode:vertical-rl]">
-            Machines · {entries.length}
+            {t("Machines · {0}", { 0: entries.length })}
           </span>
         </motion.button>
       )}
 
       <motion.aside
         id="machines-panel"
-        aria-label="Machines"
+        aria-label={t("Machines")}
         inert={!drawer}
         initial={false}
         animate={
